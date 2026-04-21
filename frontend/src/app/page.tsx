@@ -5,8 +5,9 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   FileText, Zap, Target, Sparkles, MessageSquare, ArrowRight,
-  CheckCircle, TrendingUp, Award, ChevronDown, Menu, X,
-  Briefcase, GraduationCap, XCircle, Star, Users, Clock
+  CheckCircle, TrendingUp, Award, Menu, X,
+  Briefcase, XCircle, Star, Clock, Mic, DollarSign, Search,
+  Users, Loader2, Upload, ChevronRight, Play, ExternalLink
 } from 'lucide-react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,21 +71,16 @@ function CareerStoryAnimation() {
 
   return (
     <div className="relative w-full max-w-sm mx-auto select-none">
-      {/* Main card */}
       <div className="rounded-3xl p-8 text-center relative overflow-hidden transition-all duration-700"
         style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${current.color}30`, backdropFilter: 'blur(20px)' }}>
-        {/* Glow */}
         <div className="absolute inset-0 opacity-10 transition-all duration-700"
           style={{ background: `radial-gradient(circle at 50% 50%, ${current.color}, transparent 70%)` }} />
-
         <div className="relative z-10">
           <div className="text-6xl mb-4 transition-all duration-500" style={{ filter: `drop-shadow(0 0 20px ${current.color}60)` }}>
             {current.icon}
           </div>
           <p className="text-2xl font-black text-white mb-2 transition-all">{current.label}</p>
           <p className="text-sm font-medium" style={{ color: `${current.color}cc` }}>{current.sub}</p>
-
-          {/* Progress dots */}
           <div className="flex justify-center gap-2 mt-6">
             {STORY_FRAMES.map((f, i) => (
               <button key={i} onClick={() => { setFrame(i); setPlaying(false) }}
@@ -95,7 +91,6 @@ function CareerStoryAnimation() {
                 }} />
             ))}
           </div>
-
           {!playing && frame === STORY_FRAMES.length - 1 && (
             <button onClick={restart}
               className="mt-5 text-xs font-semibold px-4 py-2 rounded-full transition-all hover:scale-105"
@@ -105,8 +100,6 @@ function CareerStoryAnimation() {
           )}
         </div>
       </div>
-
-      {/* Side indicators */}
       <div className="absolute -left-3 top-1/2 -translate-y-1/2 space-y-2">
         {['struggle', 'fail', 'fail', 'turning', 'win', 'win', 'win'].slice(0, frame + 1).map((s, i) => (
           <div key={i} className="w-2 h-2 rounded-full transition-all"
@@ -126,7 +119,7 @@ const ACTIVITIES = [
   'Vikram tailored his resume in 30 seconds ⚡',
   'Anjali switched to Data Science role 🚀',
   'Rohan from Delhi got into Amazon 🏆',
-  'Meera improved LinkedIn views by 3x 📊',
+  'Meera earned ₹15K on Upwork this month 💰',
 ]
 
 function LiveTicker() {
@@ -150,24 +143,7 @@ function LiveTicker() {
   )
 }
 
-// ── Background ────────────────────────────────────────────────────────────────
-function PageBg() {
-  return (
-    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden>
-      <div className="absolute inset-0 bg-[#060c1a]" />
-      <div className="absolute -top-60 -left-60 w-[800px] h-[800px] rounded-full opacity-[0.10]"
-        style={{ background: 'radial-gradient(circle, #1E6FD9 0%, transparent 70%)' }} />
-      <div className="absolute top-1/2 -right-40 w-[600px] h-[600px] rounded-full opacity-[0.08]"
-        style={{ background: 'radial-gradient(circle, #FF6B35 0%, transparent 70%)' }} />
-      <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] rounded-full opacity-[0.06]"
-        style={{ background: 'radial-gradient(circle, #7c3aed 0%, transparent 70%)' }} />
-      <div className="absolute inset-0 opacity-[0.025]"
-        style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
-    </div>
-  )
-}
-
-// ── Score Preview Card ────────────────────────────────────────────────────────
+// ── Score Preview Card ─────────────────────────────────────────────────────────
 function ScorePreviewCard() {
   const [score] = useState(58)
   const [shown, setShown] = useState(0)
@@ -227,26 +203,177 @@ function ScorePreviewCard() {
   )
 }
 
-// ── Feature Cards ─────────────────────────────────────────────────────────────
-const FEATURES = [
-  { icon: Target, color: '#60a5fa', bg: '#1e40af', label: 'ATS Analyzer', desc: '47-point check against real ATS systems. Get your score in 30 seconds.', badge: null, scans: '1 scan' },
-  { icon: FileText, color: '#a78bfa', bg: '#4c1d95', label: 'Resume Builder', desc: 'No resume? Build one from scratch with AI. Free to create, download as PDF/DOCX.', badge: 'NEW', scans: 'Free' },
-  { icon: Sparkles, color: '#c084fc', bg: '#581c87', label: 'Tailor to Job', desc: 'Paste a JD and AI rewrites your resume to match in 30 seconds.', badge: 'Pro', scans: '3 scans' },
-  { icon: MessageSquare, color: '#34d399', bg: '#064e3b', label: 'Interview Prep', desc: 'AI generates role-specific questions with model answers.', badge: 'Pro', scans: '5 scans' },
-  { icon: TrendingUp, color: '#fb923c', bg: '#7c2d12', label: 'LinkedIn Optimizer', desc: 'Rewrite your headline, summary, and bullets for 3x more recruiter views.', badge: 'Pro', scans: '2 scans' },
-  { icon: Award, color: '#fbbf24', bg: '#78350f', label: 'Career Roadmap', desc: 'Get a personalized week-by-week plan to reach your target role.', badge: null, scans: 'Free with analysis' },
+// ── Feature Tabs ──────────────────────────────────────────────────────────────
+type Tab = 'resume' | 'interview' | 'jobs' | 'earn'
+
+const TABS: { id: Tab; label: string; icon: any; color: string }[] = [
+  { id: 'resume', label: 'Resume Builder', icon: FileText, color: '#60a5fa' },
+  { id: 'interview', label: 'Interview Practice', icon: MessageSquare, color: '#34d399' },
+  { id: 'jobs', label: 'Find Jobs', icon: Search, color: '#a78bfa' },
+  { id: 'earn', label: 'Earn Online', icon: DollarSign, color: '#fbbf24' },
 ]
 
-// ── Pricing tiers ─────────────────────────────────────────────────────────────
-const TIERS = [
-  { name: 'Free', price: '₹0', scans: '10 scans', features: ['ATS Analyzer', 'Resume Builder', 'Career Roadmap', 'Score Share Card'], cta: 'Get Started Free', href: '/auth', highlight: false },
-  { name: 'Pro', price: '₹999', period: '/mo', scans: '200 scans', features: ['Everything in Free', 'Tailor to Job', 'Interview Prep', 'LinkedIn Optimizer', 'AI Resume Rewrite', 'PDF + DOCX Download'], cta: 'Start Pro', href: '/pricing', highlight: true },
-  { name: 'Founding Member', price: '₹299', period: ' one-time', scans: 'Lifetime Pro', features: ['Everything in Pro', 'Forever', 'Lock in before price rises', 'Priority support'], cta: 'Claim Offer', href: '/pricing', highlight: false, badge: '🔥 Limited — 500 spots' },
-]
+// ── Demo Resume Builder ────────────────────────────────────────────────────────
+function DemoResumeBuilder() {
+  const [email, setEmail] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const handleUpload = () => {
+    if (!email) return
+    setUploading(true)
+    setTimeout(() => { setUploading(false); setDone(true) }, 1500)
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-white/60 text-sm">Enter your email to get started free:</p>
+      <div className="flex gap-2">
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="you@email.com"
+          className="flex-1 bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-blue-500"
+        />
+        <button
+          onClick={handleUpload}
+          disabled={!email || uploading}
+          className="px-5 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-white/10 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 disabled:cursor-not-allowed"
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : done ? <CheckCircle className="h-4 w-4" /> : <><Zap className="h-4 w-4" />Free Scan</>}
+        </button>
+      </div>
+      {done && <p className="text-emerald-400 text-sm font-medium">✓ Check your email to access free scan!</p>}
+      <div className="flex items-center gap-4 text-xs text-white/40 pt-2">
+        <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-emerald-400" />10 free scans</span>
+        <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-emerald-400" />No credit card</span>
+        <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-emerald-400" />30 seconds</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Demo Interview ──────────────────────────────────────────────────────────────
+function DemoInterview() {
+  const [step, setStep] = useState(0)
+  const messages = [
+    { role: 'interviewer', text: "Tell me about a time you had to deal with a difficult coworker." },
+    { role: 'candidate', text: "I usually try to avoid confrontation..." },
+    { role: 'interviewer', text: "That's one approach. But using the STAR method — what was the Situation, Task, Action, Result?" },
+  ]
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white/5 rounded-xl p-4 space-y-3 max-h-48 overflow-y-auto">
+        {messages.slice(0, step + 1).map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'candidate' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs ${m.role === 'interviewer' ? 'bg-white/10 text-white/80' : 'bg-blue-600 text-white'}`}>
+              {m.role === 'interviewer' && (
+                <div className="flex items-center gap-1.5 mb-1.5 text-white/40">
+                  <MessageSquare className="h-3 w-3" /> AI Interviewer
+                </div>
+              )}
+              {m.text}
+            </div>
+          </div>
+        ))}
+      </div>
+      {step < messages.length - 1 && (
+        <button onClick={() => setStep(s => s + 1)}
+          className="w-full py-2.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-medium rounded-xl hover:bg-emerald-500/30 transition-all">
+          Next →
+        </button>
+      )}
+      {step === messages.length - 1 && (
+        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3">
+          <p className="text-green-400 text-xs font-bold mb-1">✓ Interview complete! Score: 72/100</p>
+          <p className="text-white/50 text-xs">STAR feedback: Use specific metrics next time</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Demo Jobs ─────────────────────────────────────────────────────────────────
+function DemoJobs() {
+  const jobs = [
+    { role: 'React Developer', company: 'Flipkart', location: 'Bangalore', salary: '₹18-25 LPA', tags: ['Remote', 'Urgent'] },
+    { role: 'Data Analyst', company: 'Swiggy', location: 'Hyderabad', salary: '₹8-12 LPA', tags: ['On-site', 'Freshers'] },
+    { role: 'Product Manager', company: 'CRED', location: 'Mumbai', salary: '₹25-35 LPA', tags: ['Hybrid'] },
+  ]
+  return (
+    <div className="space-y-2">
+      {jobs.map((j, i) => (
+        <div key={i} className="flex items-center justify-between bg-white/5 border border-white/8 rounded-xl px-4 py-3 hover:bg-white/10 transition-all cursor-pointer">
+          <div>
+            <p className="text-white text-sm font-medium">{j.role}</p>
+            <p className="text-white/50 text-xs">{j.company} · {j.location}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-emerald-400 text-xs font-bold">{j.salary}</p>
+            <div className="flex gap-1 mt-1 justify-end">
+              {j.tags.map((t, ti) => (
+                <span key={ti} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/50">{t}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+      <button className="w-full py-2.5 bg-purple-500/20 border border-purple-500/30 text-purple-400 text-xs font-medium rounded-xl hover:bg-purple-500/30 transition-all flex items-center justify-center gap-2">
+        View 500+ Jobs <ChevronRight className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+// ── Demo Earn ─────────────────────────────────────────────────────────────────
+function DemoEarn() {
+  const paths = [
+    { icon: '💻', title: 'Freelance on Upwork', sub: '₹5K-50K/month', time: 'Start in 3 days' },
+    { icon: '🎥', title: 'YouTube Automation', sub: '₹10K-1L/month', time: 'Start in 7 days' },
+    { icon: '🤖', title: 'AI Training (Outlier)', sub: '₹15K-40K/month', time: 'Start in 1 day' },
+  ]
+  return (
+    <div className="space-y-2">
+      {paths.map((p, i) => (
+        <div key={i} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3 hover:bg-white/10 transition-all">
+          <span className="text-2xl">{p.icon}</span>
+          <div className="flex-1">
+            <p className="text-white text-sm font-medium">{p.title}</p>
+            <p className="text-white/50 text-xs">{p.time}</p>
+          </div>
+          <div className="text-emerald-400 text-xs font-bold">{p.sub}</div>
+        </div>
+      ))}
+      <button className="w-full py-2.5 bg-orange-500/20 border border-orange-500/30 text-orange-400 text-xs font-medium rounded-xl hover:bg-orange-500/30 transition-all flex items-center justify-center gap-2">
+        See All Income Paths <ChevronRight className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+// ── Background ────────────────────────────────────────────────────────────────
+function PageBg() {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden>
+      <div className="absolute inset-0 bg-[#060c1a]" />
+      <div className="absolute -top-60 -left-60 w-[800px] h-[800px] rounded-full opacity-[0.10]"
+        style={{ background: 'radial-gradient(circle, #1E6FD9 0%, transparent 70%)' }} />
+      <div className="absolute top-1/2 -right-40 w-[600px] h-[600px] rounded-full opacity-[0.08]"
+        style={{ background: 'radial-gradient(circle, #FF6B35 0%, transparent 70%)' />
+      <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] rounded-full opacity-[0.06]"
+        style={{ background: 'radial-gradient(circle, #7c3aed 0%, transparent 70%)' />
+      <div className="absolute inset-0 opacity-[0.025]"
+        style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+    </div>
+  )
+}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<Tab>('resume')
 
   return (
     <div className="min-h-screen relative text-white">
@@ -260,11 +387,16 @@ export default function HomePage() {
               <Image src="/logo.svg" alt="CraftlyCV" width={36} height={36} className="rounded-xl" />
               <span className="text-xl font-black text-white">CraftlyCV</span>
             </Link>
-            <div className="hidden md:flex items-center gap-2">
-              <Link href="/pricing" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Pricing</Link>
-              <Link href="/build" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Build Resume</Link>
-              <Link href="/auth" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Sign In</Link>
-              <Link href="/auth" className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-105">
+            <div className="hidden md:flex items-center gap-1">
+              <Link href="/build" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Resume Builder</Link>
+              <Link href="/mock-interview" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Interview</Link>
+              <Link href="/jobs" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Jobs</Link>
+              <Link href="/income" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Earn Online</Link>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/auth" className="px-4 py-2 rounded-xl text-white/60 hover:text-white text-sm font-medium transition-all hidden sm:block">Sign In</Link>
+              <Link href="/auth"
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-105">
                 Get Started Free →
               </Link>
             </div>
@@ -274,7 +406,7 @@ export default function HomePage() {
           </div>
           {menuOpen && (
             <div className="md:hidden border-t border-white/6 bg-[#060c1a]/95 px-4 py-4 space-y-2">
-              {[['Pricing', '/pricing'], ['Build Resume', '/build'], ['Sign In', '/auth']].map(([l, h]) => (
+              {[['Resume Builder', '/build'], ['Interview', '/mock-interview'], ['Jobs', '/jobs'], ['Earn Online', '/income'], ['Sign In', '/auth']].map(([l, h]) => (
                 <Link key={h} href={h} onClick={() => setMenuOpen(false)}
                   className="block px-4 py-3 rounded-xl text-white/70 hover:bg-white/5 text-sm font-medium">{l}</Link>
               ))}
@@ -285,32 +417,32 @@ export default function HomePage() {
         </nav>
 
         {/* HERO */}
-        <section className="pt-20 pb-16 px-4">
+        <section className="pt-20 pb-12 px-4">
           <div className="max-w-7xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-16 items-center">
 
               {/* Left — Copy */}
               <div>
-                <div className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 text-orange-400 px-4 py-2 rounded-full text-sm font-semibold mb-8">
-                  <Zap className="h-4 w-4" /> India's toughest ATS resume analyzer
+                <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-2 rounded-full text-sm font-semibold mb-8">
+                  <Zap className="h-4 w-4" /> Career Operating System — Not just a resume builder
                 </div>
                 <h1 className="text-5xl md:text-6xl lg:text-7xl font-black leading-[1.05] mb-6">
-                  Your resume is getting
-                  <span className="block text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400"> rejected before</span>
-                  <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-blue-300"> anyone reads it.</span>
+                  Get hired or start
+                  <span className="block text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-green-400"> earning in</span>
+                  <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-blue-300"> 7 days.</span>
                 </h1>
                 <p className="text-lg text-white/50 mb-8 leading-relaxed max-w-lg">
-                  ATS systems filter out 75% of resumes before a human sees them. Find out where yours stands — and get the exact fixes — in 30 seconds.
+                  AI Resume Builder + Real Interview Practice + Jobs + Gigs. Everything you need to get a job OR make money online — in one platform.
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-4 mb-8">
                   <Link href="/auth"
                     className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold text-lg transition-all shadow-2xl shadow-blue-500/20 hover:scale-105">
-                    <Target className="h-5 w-5" /> Analyze My Resume Free
+                    <FileText className="h-5 w-5" /> Build My Resume — Free
                   </Link>
-                  <Link href="/build"
+                  <Link href="/mock-interview"
                     className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-white/6 hover:bg-white/10 border border-white/10 text-white font-bold text-lg transition-all">
-                    <FileText className="h-5 w-5" /> Build a Resume
+                    <Mic className="h-5 w-5" /> Practice Interview Now
                   </Link>
                 </div>
 
@@ -329,7 +461,7 @@ export default function HomePage() {
         </section>
 
         {/* STATS */}
-        <section className="py-14 px-4 border-y border-white/6 bg-white/2">
+        <section className="py-12 px-4 border-y border-white/6 bg-white/2">
           <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {[
               { to: 50000, suffix: '+', label: 'Resumes Analyzed' },
@@ -347,49 +479,123 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* FEATURES */}
-        <section className="py-24 px-4">
+        {/* PRODUCT TABS */}
+        <section className="py-16 px-4">
           <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16">
-              <p className="text-blue-400 font-bold uppercase tracking-widest text-sm mb-3">Everything you need</p>
-              <h2 className="text-4xl md:text-5xl font-black mb-4">
-                Not just a score.<br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-orange-400">A complete career toolkit.</span>
+            <div className="text-center mb-10">
+              <h2 className="text-4xl font-black mb-3">
+                One platform.<br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-orange-400">Four ways to win.</span>
               </h2>
-              <p className="text-white/40 max-w-lg mx-auto">
-                From building your first resume to landing interviews at top companies — we cover the entire journey.
-              </p>
+              <p className="text-white/40 max-w-md mx-auto">From building your resume to landing interviews or earning online — we cover every path.</p>
             </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {FEATURES.map((f, i) => {
-                const Icon = f.icon
+            {/* Tab buttons */}
+            <div className="flex flex-wrap justify-center gap-2 mb-8">
+              {TABS.map(tab => {
+                const Icon = tab.icon
                 return (
-                  <div key={i} className="group rounded-2xl p-6 border border-white/6 bg-white/3 hover:bg-white/6 hover:border-white/12 transition-all cursor-pointer relative overflow-hidden">
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                      style={{ background: `radial-gradient(circle at 0% 0%, ${f.color}10, transparent 60%)` }} />
-                    <div className="relative z-10">
-                      <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110"
-                        style={{ background: `${f.color}15`, border: `1px solid ${f.color}25` }}>
-                        <Icon className="h-6 w-6" style={{ color: f.color }} />
-                      </div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <p className="font-bold text-white">{f.label}</p>
-                        {f.badge && (
-                          <span className="text-xs px-2 py-0.5 rounded-full font-bold"
-                            style={f.badge === 'Pro'
-                              ? { background: '#7c3aed20', color: '#a78bfa', border: '1px solid #7c3aed30' }
-                              : { background: '#059669' + '20', color: '#34d399', border: '1px solid #05966930' }}>
-                            {f.badge}
-                          </span>
-                        )}
-                        <span className="text-xs text-white/30 ml-auto">{f.scans}</span>
-                      </div>
-                      <p className="text-sm text-white/50 leading-relaxed">{f.desc}</p>
-                    </div>
-                  </div>
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      activeTab === tab.id
+                        ? 'text-white'
+                        : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10'
+                    }`}
+                    style={activeTab === tab.id ? { background: `${tab.color}20`, border: `1px solid ${tab.color}40` } : {}}
+                  >
+                    <Icon className="h-4 w-4" style={{ color: activeTab === tab.id ? tab.color : undefined }} />
+                    {tab.label}
+                  </button>
                 )
               })}
+            </div>
+
+            {/* Tab content */}
+            <div className="grid lg:grid-cols-2 gap-8 items-start">
+              <div className="rounded-2xl p-6 border border-white/8 bg-white/3">
+                <h3 className="text-xl font-bold text-white mb-4">
+                  {activeTab === 'resume' && 'AI Resume Builder'}
+                  {activeTab === 'interview' && 'AI Mock Interview'}
+                  {activeTab === 'jobs' && 'Job Finder'}
+                  {activeTab === 'earn' && 'Income Hub'}
+                </h3>
+                {activeTab === 'resume' && <DemoResumeBuilder />}
+                {activeTab === 'interview' && <DemoInterview />}
+                {activeTab === 'jobs' && <DemoJobs />}
+                {activeTab === 'earn' && <DemoEarn />}
+              </div>
+              <div className="space-y-4">
+                {activeTab === 'resume' && [
+                  { icon: Target, title: 'ATS Score in 30 sec', desc: 'Upload your resume and get a detailed ATS score with specific fixes.' },
+                  { icon: Sparkles, title: 'AI Tailor to Job', desc: 'Paste any job description and get your resume rewritten to match.' },
+                  { icon: FileText, title: '20+ Templates', desc: 'Professional templates optimized for ATS and hiring managers.' },
+                ].map((f, i) => (
+                  <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/6">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+                      <f.icon className="h-5 w-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-white text-sm">{f.title}</p>
+                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+                {activeTab === 'interview' && [
+                  { icon: MessageSquare, title: 'Chat-style AI Interviewer', desc: 'Answer questions like you would in a real interview — by typing or voice.' },
+                  { icon: Star, title: 'STAR Method Feedback', desc: 'After each answer, get structured feedback on your response.' },
+                  { icon: TrendingUp, title: 'Confidence Score', desc: 'End-to-end scoring on clarity, relevance, and impact.' },
+                ].map((f, i) => (
+                  <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/6">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0">
+                      <f.icon className="h-5 w-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-white text-sm">{f.title}</p>
+                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+                {activeTab === 'jobs' && [
+                  { icon: Search, title: 'Job Aggregation', desc: 'Find relevant jobs from multiple sources in one place.' },
+                  { icon: Briefcase, title: 'Role Matching', desc: 'Get matched to roles based on your resume and skills.' },
+                  { icon: Award, title: 'Direct Apply', desc: 'Apply directly with your CraftlyCV-optimized resume.' },
+                ].map((f, i) => (
+                  <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/6">
+                    <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
+                      <f.icon className="h-5 w-5 text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-white text-sm">{f.title}</p>
+                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+                {activeTab === 'earn' && [
+                  { icon: DollarSign, title: 'Freelance Gigs', desc: 'Upwork, Fiverr, and more. Get matched to gigs you can start today.' },
+                  { icon: Play, title: 'YouTube Automation', desc: 'Build a faceless YouTube channel with AI tools. Real income path.' },
+                  { icon: Users, title: 'AI Training Platforms', desc: 'Earn ₹15-40K/month labeling AI data on Outlier, Scale AI, etc.' },
+                ].map((f, i) => (
+                  <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/6">
+                    <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0">
+                      <f.icon className="h-5 w-5 text-orange-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-white text-sm">{f.title}</p>
+                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* CTA */}
+            <div className="text-center mt-8">
+              <Link href="/auth"
+                className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-base transition-all">
+                <Zap className="h-4 w-4" /> Start Free — No Credit Card
+              </Link>
             </div>
           </div>
         </section>
@@ -398,16 +604,15 @@ export default function HomePage() {
         <section className="py-24 px-4 border-y border-white/6 bg-white/2">
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-16">
-              <h2 className="text-4xl font-black mb-4">From upload to offer letter</h2>
-              <p className="text-white/40">Three steps. Thirty seconds. Real results.</p>
+              <h2 className="text-4xl font-black mb-4">From upload to offer letter — or income</h2>
+              <p className="text-white/40">Three steps. Real results. Multiple paths to win.</p>
             </div>
             <div className="grid md:grid-cols-3 gap-6 relative">
-              {/* Connector line */}
               <div className="hidden md:block absolute top-10 left-1/4 right-1/4 h-px bg-gradient-to-r from-blue-600/50 via-blue-400/50 to-blue-600/50" />
               {[
-                { n: '01', icon: '📤', title: 'Upload your resume', desc: 'PDF or DOCX, any format. Or build one from scratch using our AI builder — free.' },
-                { n: '02', icon: '🤖', title: 'AI runs 47 checks', desc: 'Keywords, structure, ATS compatibility, impact language, quantification — everything.' },
-                { n: '03', icon: '🎯', title: 'Get exact fixes', desc: 'Not vague advice. Specific rewrites, missing keywords, and a career roadmap to your goal.' },
+                { n: '01', icon: '📤', title: 'Upload your resume', desc: 'PDF or DOCX. Or build one from scratch using our AI builder — free.' },
+                { n: '02', icon: '🤖', title: 'AI optimizes everything', desc: 'ATS score, keywords, interview questions, job matches, income paths.' },
+                { n: '03', icon: '🎯', title: 'You take action', desc: 'Apply to jobs, practice interviews, or start earning online — your choice.' },
               ].map((s, i) => (
                 <div key={i} className="rounded-2xl p-7 text-center relative"
                   style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -421,60 +626,15 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* PRICING */}
-        <section className="py-24 px-4">
-          <div className="max-w-5xl mx-auto">
-            <div className="text-center mb-14">
-              <h2 className="text-4xl font-black mb-3">Simple pricing</h2>
-              <p className="text-white/40">Start free. Upgrade when you're ready.</p>
-            </div>
-            <div className="grid md:grid-cols-3 gap-5">
-              {TIERS.map((t, i) => (
-                <div key={i} className={`rounded-2xl p-7 relative overflow-hidden transition-all hover:scale-[1.02] ${
-                  t.highlight ? 'border-blue-500/40 bg-blue-600/10' : 'border-white/8 bg-white/3'
-                } border`}>
-                  {t.highlight && (
-                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
-                  )}
-                  {t.badge && (
-                    <div className="inline-flex items-center gap-1 text-xs font-bold bg-orange-500/15 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full mb-4">{t.badge}</div>
-                  )}
-                  <p className="text-white/60 text-sm font-semibold mb-1">{t.name}</p>
-                  <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-4xl font-black text-white">{t.price}</span>
-                    {t.period && <span className="text-white/40 text-sm">{t.period}</span>}
-                  </div>
-                  <p className="text-blue-400 text-sm font-bold mb-6">{t.scans}</p>
-                  <ul className="space-y-3 mb-8">
-                    {t.features.map((f, j) => (
-                      <li key={j} className="flex items-center gap-2.5 text-sm text-white/70">
-                        <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />{f}
-                      </li>
-                    ))}
-                  </ul>
-                  <Link href={t.href}
-                    className={`block text-center py-3.5 rounded-xl font-bold text-sm transition-all ${
-                      t.highlight
-                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'
-                        : 'bg-white/8 hover:bg-white/12 border border-white/10 text-white'
-                    }`}>
-                    {t.cta}
-                  </Link>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
         {/* TESTIMONIALS */}
-        <section className="py-16 px-4 border-t border-white/6 bg-white/2">
+        <section className="py-16 px-4">
           <div className="max-w-5xl mx-auto">
             <p className="text-center text-white/30 text-sm font-bold uppercase tracking-widest mb-10">What users are saying</p>
             <div className="grid md:grid-cols-3 gap-4">
               {[
                 { name: 'Arjun S.', role: 'Software Engineer', text: 'Went from 34 to 89 score in one afternoon. Got 3 interview calls the next week.', stars: 5 },
-                { name: 'Priya M.', role: 'Data Analyst', text: 'The roadmap feature is insane. It told me exactly what certs to get for the Data Science switch.', stars: 5 },
-                { name: 'Rahul K.', role: 'MBA Graduate', text: 'As a fresher with no experience, the resume builder helped me create something actually impressive.', stars: 5 },
+                { name: 'Priya M.', role: 'Data Analyst', text: 'The income hub showed me freelance options I never knew existed. Made ₹12K in my first month.', stars: 5 },
+                { name: 'Rahul K.', role: 'MBA Graduate', text: 'The AI mock interview is intense. First session I scored 52. By the third, I hit 81.', stars: 5 },
               ].map((t, i) => (
                 <div key={i} className="rounded-2xl p-6 border border-white/6 bg-white/3">
                   <div className="flex gap-0.5 mb-3">
@@ -491,19 +651,64 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* PRICING PREVIEW */}
+        <section className="py-20 px-4">
+          <div className="max-w-4xl mx-auto text-center">
+            <h2 className="text-4xl font-black mb-4">Start free. Upgrade when you're winning.</h2>
+            <p className="text-white/40 mb-10 max-w-md mx-auto">
+              10 free scans to start. No credit card. Upgrade to Pro when you land your first interview.
+            </p>
+            <div className="grid md:grid-cols-3 gap-4 text-left">
+              {[
+                { name: 'Free', price: '₹0', scans: '10 scans', features: ['ATS Analyzer', 'Basic Templates', 'Score Card'], cta: 'Get Started', highlight: false },
+                { name: 'Pro', price: '₹149', period: '/mo', scans: '200 scans', features: ['Everything +', 'AI Mock Interview', 'All Templates', 'Priority Support'], cta: 'Start Pro', highlight: true },
+                { name: 'Lifetime', price: '₹399', period: ' one-time', scans: 'All Pro forever', features: ['All Pro features', 'Never pay again', 'Founding badge'], cta: 'Claim Deal', highlight: false, badge: 'Best Value' },
+              ].map((t, i) => (
+                <div key={i} className={`rounded-2xl p-6 border ${t.highlight ? 'border-blue-500/40 bg-blue-600/10' : 'border-white/8 bg-white/3'}`}>
+                  {t.badge && (
+                    <div className="inline-flex items-center gap-1 text-xs font-bold bg-orange-500/15 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded-full mb-3">{t.badge}</div>
+                  )}
+                  <p className="text-white/60 text-sm font-semibold mb-1">{t.name}</p>
+                  <div className="flex items-baseline gap-1 mb-1">
+                    <span className="text-3xl font-black text-white">{t.price}</span>
+                    {t.period && <span className="text-white/40 text-xs">{t.period}</span>}
+                  </div>
+                  <p className="text-blue-400 text-xs font-bold mb-4">{t.scans}</p>
+                  <ul className="space-y-2 mb-5">
+                    {t.features.map((f, j) => (
+                      <li key={j} className="flex items-center gap-2 text-xs text-white/65">
+                        <CheckCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />{f}
+                      </li>
+                    ))}
+                  </ul>
+                  <Link href="/pricing"
+                    className={`block text-center py-2.5 rounded-xl font-bold text-xs transition-all ${
+                      t.highlight
+                        ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                        : 'bg-white/8 hover:bg-white/12 border border-white/10 text-white'
+                    }`}>
+                    {t.cta}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* FINAL CTA */}
         <section className="py-28 px-4">
           <div className="max-w-3xl mx-auto text-center">
             <div className="text-6xl mb-6">🚀</div>
             <h2 className="text-5xl font-black mb-5 leading-tight">
-              Your next interview call<br />is one scan away.
+              Your next job offer<br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-orange-400">is one scan away.</span>
             </h2>
             <p className="text-white/40 text-lg mb-10 max-w-md mx-auto">
-              Stop wondering. Start knowing. Find out exactly what's holding your resume back.
+              Stop sending the same resume to 200 companies. Start winning.
             </p>
             <Link href="/auth"
               className="inline-flex items-center gap-3 px-10 py-5 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-black text-xl transition-all shadow-2xl shadow-blue-500/25 hover:scale-105">
-              <Zap className="h-6 w-6" /> Analyze My Resume — Free
+              <Zap className="h-6 w-6" /> Build My Resume — Free
             </Link>
             <p className="text-white/25 text-sm mt-5">10 free scans · No credit card · 30 seconds</p>
           </div>
@@ -519,9 +724,14 @@ export default function HomePage() {
             <div className="flex items-center gap-6 text-sm text-white/30">
               <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
               <Link href="/build" className="hover:text-white transition-colors">Resume Builder</Link>
-              <Link href="/auth" className="hover:text-white transition-colors">Sign In</Link>
+              <Link href="/mock-interview" className="hover:text-white transition-colors">Interview</Link>
+              <Link href="/income" className="hover:text-white transition-colors">Earn Online</Link>
+              <Link href="/about" className="hover:text-white transition-colors">About</Link>
+              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
+              <Link href="/refund" className="hover:text-white transition-colors">Refund</Link>
             </div>
-            <p className="text-white/20 text-sm">© {new Date().getFullYear()} CraftlyCV · Built for India's job seekers</p>
+            <p className="text-white/20 text-sm">© {new Date().getFullYear()} CraftlyCV · Built for job seekers worldwide</p>
           </div>
         </footer>
 

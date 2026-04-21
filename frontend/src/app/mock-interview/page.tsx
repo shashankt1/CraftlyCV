@@ -9,11 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { FileText, ArrowLeft, Mic, Loader2, Upload, X, Zap, Sun, Moon, Send, MicOff, Volume2, Star, CheckCircle, RotateCcw } from 'lucide-react'
+import { FileText, ArrowLeft, Mic, Loader2, Upload, X, Zap, Sun, Moon, Send, MicOff, Volume2, Star, CheckCircle, RotateCcw, ArrowRightCircle, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 
-interface Message { role: 'interviewer' | 'candidate'; content: string; score?: number; feedback?: string }
+interface Message { role: 'interviewer' | 'candidate'; content: string; score?: number; feedback?: string; starFeedback?: any }
+interface OverallReport { overallScore: number; communicationScore: number; technicalScore: number; starMethodScore: number; confidenceScore: number; strengths: string[]; improvements: string[]; verdict: string }
 type Stage = 'setup' | 'interview' | 'done'
 
 export default function MockInterviewPage() {
@@ -122,6 +123,7 @@ export default function MockInterviewPage() {
         content: isLast ? data.closingMessage : data.feedback + '\n\n' + data.nextQuestion,
         score: data.score,
         feedback: data.feedbackDetail,
+        starFeedback: data.starFeedback,
       }
       setMessages(prev => [...prev, feedback])
       if (data.score) setScores(prev => [...prev, data.score])
@@ -298,39 +300,149 @@ export default function MockInterviewPage() {
         {/* Done */}
         {stage === 'done' && (
           <div className="space-y-4">
-            <Card className="bg-gradient-to-br from-rose-50 to-purple-50 dark:from-rose-950/30 dark:to-purple-950/30 border-rose-200">
+            <Card className="bg-gradient-to-br from-emerald-50 to-blue-50 dark:from-emerald-950/30 dark:to-blue-950/30 border-emerald-200">
               <CardContent className="py-8 text-center">
-                <CheckCircle className="h-14 w-14 text-green-500 mx-auto mb-4" />
-                <p className="text-4xl font-bold">{avgScore}/10</p>
-                <p className="text-lg font-medium text-muted-foreground">Overall Interview Score</p>
-                <p className="text-sm mt-2">
-                  {avgScore >= 8 ? '🎉 Outstanding! You\'re ready for the real thing.' : avgScore >= 6 ? '👍 Good performance! A few more sessions will make you ready.' : '📚 Keep practicing — every session makes you stronger!'}
-                </p>
+                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="h-8 w-8 text-emerald-500" />
+                </div>
+                <p className="text-5xl font-black text-slate-900 dark:text-white mb-1">{avgScore}/10</p>
+                <p className="text-lg font-medium text-muted-foreground mb-4">Overall Interview Score</p>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 dark:bg-slate-800/80 text-sm">
+                  <span className={avgScore >= 8 ? 'text-emerald-600' : avgScore >= 6 ? 'text-blue-600' : 'text-orange-600'}>
+                    {avgScore >= 8 ? '🎉 Ready to impress!' : avgScore >= 6 ? '👍 Getting there — keep practicing!' : '📚 Keep going — every session helps!'}
+                  </span>
+                </div>
               </CardContent>
             </Card>
 
+            {/* Score Breakdown */}
+            {scores.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Score Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {scores.map((s, i) => (
+                      <div key={i} className="text-center p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
+                        <p className="text-2xl font-black text-slate-900 dark:text-white">{(s * 10).toFixed(0)}%</p>
+                        <p className="text-xs text-muted-foreground">Q{i + 1}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* STAR Method Tips */}
+            <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Star className="h-5 w-5 text-amber-500" />
+                  STAR Method Reminder
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                <div className="grid md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="font-bold text-slate-900 dark:text-white mb-1">Situation</p>
+                    <p>Set the context. What was the scenario?</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 dark:text-white mb-1">Task</p>
+                    <p>What was YOUR responsibility in that situation?</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 dark:text-white mb-1">Action</p>
+                    <p>What specific steps did YOU take?</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 dark:text-white mb-1">Result</p>
+                    <p>What measurable outcome did your actions achieve?</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Interview Transcript */}
             <Card>
-              <CardHeader><CardTitle>Interview Transcript</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle className="text-lg">Interview Transcript</CardTitle>
+              </CardHeader>
               <CardContent>
                 <div className="space-y-3 max-h-[400px] overflow-y-auto">
                   {messages.map((msg, i) => (
                     <div key={i} className={`p-3 rounded-lg text-sm ${msg.role === 'interviewer' ? 'bg-slate-50 dark:bg-slate-800' : 'bg-rose-50 dark:bg-rose-950/20 border-l-4 border-rose-400'}`}>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <span className="font-medium text-xs">{msg.role === 'interviewer' ? '🤖 AI Interviewer' : '👤 You'}</span>
-                        {msg.score && <Badge className="bg-green-100 text-green-700 text-xs">{msg.score}/10</Badge>}
+                        {msg.score && (
+                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-xs">
+                            Score: {(msg.score * 10).toFixed(0)}%
+                          </Badge>
+                        )}
                       </div>
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300">{msg.content}</p>
+                      {msg.feedback && (
+                        <div className="mt-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-800">
+                          <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1">💡 Feedback</p>
+                          <p className="text-xs text-blue-700 dark:text-blue-300">{msg.feedback}</p>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
 
+            {/* Next Steps */}
+            <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ArrowRightCircle className="h-5 w-5 text-blue-500" />
+                  Your Next Steps
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm">
+                  {avgScore < 70 && (
+                    <li className="flex items-start gap-2">
+                      <span className="text-orange-500 mt-0.5">●</span>
+                      <span className="text-slate-700 dark:text-slate-300">Practice 2-3 more sessions focusing on the STAR method</span>
+                    </li>
+                  )}
+                  {avgScore >= 70 && avgScore < 85 && (
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 mt-0.5">●</span>
+                      <span className="text-slate-700 dark:text-slate-300">You're almost there! Focus on quantifying your achievements with specific numbers</span>
+                    </li>
+                  )}
+                  {avgScore >= 85 && (
+                    <li className="flex items-start gap-2">
+                      <span className="text-emerald-500 mt-0.5">●</span>
+                      <span className="text-slate-700 dark:text-slate-300">You're ready! Apply to your target roles with confidence</span>
+                    </li>
+                  )}
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-500 mt-0.5">●</span>
+                    <span className="text-slate-700 dark:text-slate-300">Tailor your resume to each specific job description using CraftlyCV's Tailor feature</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-500 mt-0.5">●</span>
+                    <span className="text-slate-700 dark:text-slate-300">Practice voice interviews — most real interviews are voice-only</span>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+
             <div className="flex gap-3">
               <Button onClick={() => { setStage('setup'); setMessages([]); setScores([]); setQuestionCount(0); setSessionId(null) }} variant="outline" className="flex-1">
-                <RotateCcw className="mr-2 h-4 w-4" /> New Session
+                <RotateCcw className="mr-2 h-4 w-4" /> Practice Again
               </Button>
-              <Link href="/dashboard" className="flex-1"><Button className="w-full">Back to Dashboard</Button></Link>
+              <Link href="/tailor" className="flex-1">
+                <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                  <Sparkles className="mr-2 h-4 w-4" /> Tailor My Resume
+                </Button>
+              </Link>
             </div>
           </div>
         )}
