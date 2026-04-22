@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { createAdminClient } from '@/lib/supabase/server'
+import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
+import { aiRouter } from '@/lib/ai-router'
+
+const ROADMAP_SCAN_COST = 2
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,96 +13,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     }
 
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
+    // ─── RATE LIMITING ─────────────────────────────────────────────────────────
+    const rateLimit = await checkRateLimit(userId, 'roadmap', 10, 60)
+    if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit.retryAfter || 60)
 
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const supabase = await createAdminClient()
 
-    const prompt = `You are a career counselor building a highly specific, actionable career roadmap for someone.
+    // ─── ATOMIC SCAN DEDUCTION ─────────────────────────────────────────────────
+    const { data: deductResult, error: deductError } = await supabase
+      .rpc('deduct_scan', { p_user_id: userId, p_amount: ROADMAP_SCAN_COST })
 
-Current field: ${detectedField || 'unknown'}
-Target goal: ${targetGoal}
-Current ATS score: ${score}/100
-Context: Indian job market, use Indian salary ranges in LPA (Lakhs Per Annum)
+    if (deductError) return NextResponse.json({ error: 'Database error' }, { status: 500 })
 
-Build a realistic, step-by-step roadmap to get them from where they are to their target goal.
-
-Rules:
-- Steps must be concrete and specific (not generic advice)
-- Include real resources with real URLs (Coursera, YouTube, freeCodeCamp, LeetCode, etc.)
-- Mix free and paid resources - prioritize free where possible
-- Timeline must be realistic (not too fast, not too slow)
-- DSA topics only if the target is technical/software role, otherwise null
-- Salary jump should be realistic for Indian market
-
-Respond ONLY with valid JSON:
-{
-  "currentGoal": "${detectedField || 'Current Role'}",
-  "targetGoal": "${targetGoal}",
-  "timeframe": "X-Y months",
-  "salaryJump": "₹XL → ₹YL LPA (realistic range)",
-  "steps": [
-    {
-      "week": "Week 1-2",
-      "action": "Specific action to take",
-      "resource": "Resource Name",
-      "resourceUrl": "https://actual-url.com",
-      "free": true
-    },
-    {
-      "week": "Week 3-4",
-      "action": "Next specific action",
-      "resource": "Resource Name",
-      "resourceUrl": "https://actual-url.com",
-      "free": false
-    },
-    {
-      "week": "Month 2",
-      "action": "Action",
-      "resource": "Resource",
-      "resourceUrl": "https://url.com",
-      "free": true
-    },
-    {
-      "week": "Month 3",
-      "action": "Action",
-      "resource": "Resource",
-      "resourceUrl": "https://url.com",
-      "free": true
-    },
-    {
-      "week": "Month 4-5",
-      "action": "Build portfolio project in target domain",
-      "resource": "GitHub",
-      "resourceUrl": "https://github.com",
-      "free": true
-    },
-    {
-      "week": "Month 5-6",
-      "action": "Apply to target roles + network actively",
-      "resource": "LinkedIn Jobs",
-      "resourceUrl": "https://linkedin.com/jobs",
-      "free": true
+    const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
+    if (!parsedResult.success) {
+      const err = parsedResult.error || ''
+      if (err === 'Insufficient scans') return NextResponse.json({ error: 'Need 2 scans' }, { status: 402 })
+      return NextResponse.json({ error: err }, { status: 400 })
     }
-  ],
-  "certifications": [
-    "Certification 1 relevant to ${targetGoal}",
-    "Certification 2",
-    "Certification 3",
-    "Certification 4"
-  ],
-  "dsaTopics": ["Arrays", "Strings", "Dynamic Programming", "Trees", "Graphs", "System Design", "SQL"]
-}`
 
-    const result = await model.generateContent(prompt)
-    const raw = result.response.text().replace(/```json|```/g, '').trim()
-    const jsonMatch = raw.match(/\{[\s\S]*\}/)
-    const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw)
+    // ─── Call AI Brain ──────────────────────────────────────────────────────────
+    const aiResult = await aiRouter({
+      mode: 'career',
+      userId,
+      context: { detectedField, targetGoal, score },
+    })
 
-    return NextResponse.json(parsed)
+    if (!aiResult.success) {
+      await supabase.rpc('add_scans', { p_user_id: userId, p_amount: ROADMAP_SCAN_COST })
+      return NextResponse.json({ error: aiResult.error }, { status: 500 })
+    }
+
+    // ─── LOG USAGE ───────────────────────────────────────────────────────────
+    await supabase.from('scan_logs').insert({
+      user_id: userId, action_type: 'career_suggester', scans_used: ROADMAP_SCAN_COST, created_at: new Date().toISOString(),
+    })
+
+    return NextResponse.json(aiResult.data)
+
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Roadmap generation failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Roadmap generation failed' }, { status: 500 })
   }
 }

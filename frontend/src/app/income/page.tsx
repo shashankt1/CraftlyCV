@@ -164,7 +164,7 @@ function PageBg() {
       <div className="absolute -top-40 right-1/4 w-[600px] h-[600px] rounded-full opacity-[0.08]"
         style={{ background: 'radial-gradient(circle, #fbbf24 0%, transparent 70%)' }} />
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] rounded-full opacity-[0.06]"
-        style={{ background: 'radial-gradient(circle, #34d399 0%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(circle, #34d399 0%, transparent 70%)' }} />
     </div>
   )
 }

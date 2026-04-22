@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createAdminClient } from '@/lib/supabase/server'
+import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
+import { aiRouter } from '@/lib/ai-router'
+
+const JOBS_SCAN_COST = 1
 
 async function extractText(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer())
@@ -13,73 +16,53 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const userId = formData.get('userId') as string
+
     if (!file || !userId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large. Maximum 10MB.' }, { status: 400 })
+    }
+
+    // ─── RATE LIMITING ─────────────────────────────────────────────────────────
+    const rateLimit = await checkRateLimit(userId, 'jobs', 10, 60)
+    if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit.retryAfter || 60)
+
     const supabase = await createAdminClient()
-    const { data: profile } = await supabase.from('profiles').select('scans').eq('id', userId).single()
-    if (!profile || profile.scans < 1) return NextResponse.json({ error: 'Need 1 scan' }, { status: 402 })
+
+    // ─── ATOMIC SCAN DEDUCTION ─────────────────────────────────────────────────
+    const { data: deductResult, error: deductError } = await supabase
+      .rpc('deduct_scan', { p_user_id: userId, p_amount: JOBS_SCAN_COST })
+
+    if (deductError) return NextResponse.json({ error: 'Database error' }, { status: 500 })
+
+    const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
+    if (!parsedResult.success) {
+      const err = parsedResult.error || ''
+      if (err === 'Insufficient scans') return NextResponse.json({ error: 'Need 1 scan' }, { status: 402 })
+      return NextResponse.json({ error: err }, { status: 400 })
+    }
 
     const resumeText = await extractText(file)
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
-    const prompt = `You are a career counselor AI. Analyze this resume and provide comprehensive career guidance.
+    // ─── Call AI Brain ──────────────────────────────────────────────────────────
+    const aiResult = await aiRouter({
+      mode: 'career',
+      userId,
+      resumeText,
+    })
 
-RESUME:
-${resumeText}
-
-Respond ONLY with valid JSON in this exact format (no extra text):
-{
-  "currentLevel": "Junior/Mid/Senior/Executive",
-  "summary": "2-sentence career overview",
-  "jobRoles": [
-    {"title": "Role Title", "matchPercent": 92, "reason": "why this fits", "salaryRange": "₹8-15 LPA"},
-    {"title": "Role Title", "matchPercent": 85, "reason": "why this fits", "salaryRange": "₹10-18 LPA"},
-    {"title": "Role Title", "matchPercent": 78, "reason": "why this fits", "salaryRange": "₹12-20 LPA"},
-    {"title": "Role Title", "matchPercent": 70, "reason": "why this fits", "salaryRange": "₹15-25 LPA"}
-  ],
-  "careerSwitch": {
-    "from": "current domain",
-    "to": "suggested new domain with high demand",
-    "timeframe": "6-12 months",
-    "steps": ["step 1", "step 2", "step 3", "step 4", "step 5"]
-  },
-  "freelancePaths": [
-    {
-      "platform": "Upwork",
-      "url": "https://www.upwork.com",
-      "niche": "specific freelance niche based on skills",
-      "howToStart": ["step 1", "step 2", "step 3"],
-      "earnings": "₹2,000-8,000/hour"
-    },
-    {
-      "platform": "Fiverr",
-      "url": "https://www.fiverr.com",
-      "niche": "another specific niche",
-      "howToStart": ["step 1", "step 2", "step 3"],
-      "earnings": "$50-200/project"
+    if (!aiResult.success) {
+      await supabase.rpc('add_scans', { p_user_id: userId, p_amount: JOBS_SCAN_COST })
+      return NextResponse.json({ error: aiResult.error }, { status: 500 })
     }
-  ],
-  "courses": [
-    {"name": "Course Name", "provider": "Coursera/Udemy/YouTube/etc", "url": "https://coursera.org/...", "free": false},
-    {"name": "Course Name", "provider": "YouTube", "url": "https://youtube.com/...", "free": true},
-    {"name": "Course Name", "provider": "Provider", "url": "https://...", "free": false},
-    {"name": "Course Name", "provider": "Provider", "url": "https://...", "free": true}
-  ],
-  "certifications": ["Cert 1", "Cert 2", "Cert 3", "Cert 4", "Cert 5"],
-  "dsaTopics": ["Arrays", "Dynamic Programming", "Graphs", "Trees", "System Design"]
-}
 
-Note: dsaTopics should be null if the person is not in a technical/software role. Use Indian salary ranges (LPA) for Indian profiles. Use real course URLs from Coursera, Udemy, freeCodeCamp, or YouTube.`
+    // ─── LOG USAGE ───────────────────────────────────────────────────────────
+    await supabase.from('scan_logs').insert({
+      user_id: userId, action_type: 'job_suggester', scans_used: JOBS_SCAN_COST, created_at: new Date().toISOString(),
+    })
 
-    const result = await model.generateContent(prompt)
-    const raw = result.response.text().replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(raw)
+    return NextResponse.json(aiResult.data)
 
-    await supabase.from('profiles').update({ scans: profile.scans - 1 }).eq('id', userId)
-    await supabase.from('scan_logs').insert({ user_id: userId, action_type: 'job_suggester', scans_used: 1, created_at: new Date().toISOString() })
-
-    return NextResponse.json(parsed)
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 })
   }

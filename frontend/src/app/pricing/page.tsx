@@ -192,7 +192,7 @@ export default function PricingPage() {
     }
     setLoading(planId)
     try {
-      const res = await fetch('/api/payment/create-order', {
+      const res = await fetch('/api/payments/create-order', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId, amount, userId: user.id }),
       })
@@ -206,7 +206,7 @@ export default function PricingPage() {
         amount: order.amount, currency: order.currency || 'INR', order_id: order.orderId,
         name: 'CraftlyCV', description: `${planId} Plan`,
         handler: async (response: any) => {
-          const verify = await fetch('/api/payment/verify', {
+          const verify = await fetch('/api/payments/verify', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...response, userId: user.id, planId }),
           })

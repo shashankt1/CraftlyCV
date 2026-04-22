@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createAdminClient } from '@/lib/supabase/server'
+import { aiRouter } from '@/lib/ai-router'
+
+const TAILOR_SCAN_COST = 3
 
 async function extractText(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer())
@@ -68,65 +70,74 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const supabase = await createAdminClient()
-    const { data: profile } = await supabase.from('profiles').select('scans').eq('id', userId).single()
-    if (!profile || profile.scans < 3) {
-      return NextResponse.json({ error: 'Need 3 scans' }, { status: 402 })
+    // File size validation (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 400 })
     }
 
+    const supabase = await createAdminClient()
+
+    // ─── ATOMIC SCAN DEDUCTION using RPC ─────────────────────────────────────
+    const { data: deductResult, error: deductError } = await supabase
+      .rpc('deduct_scan', { p_user_id: userId, p_amount: TAILOR_SCAN_COST })
+
+    if (deductError) {
+      return NextResponse.json({ error: 'Database error during scan deduction' }, { status: 500 })
+    }
+
+    const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
+
+    if (!parsedResult.success) {
+      const errorMsg = parsedResult.error || 'Unknown error'
+      if (errorMsg === 'Insufficient scans') {
+        return NextResponse.json({ error: 'Not enough scans' }, { status: 402 })
+      }
+      return NextResponse.json({ error: errorMsg }, { status: 400 })
+    }
+
+    // ─── Extract resume text ─────────────────────────────────────────────────
     const resumeText = await extractText(file)
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
 
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    // ─── Call AI Brain ────────────────────────────────────────────────────────
+    const aiResult = await aiRouter({
+      mode: 'resume',
+      userId,
+      resumeText,
+      jobDescription,
+    })
 
-    const prompt = `You are an expert ATS resume writer. Rewrite the resume below to perfectly match the job description provided.
+    if (!aiResult.success) {
+      await supabase.rpc('add_scans', { p_user_id: userId, p_amount: TAILOR_SCAN_COST })
+      return NextResponse.json({ error: aiResult.error }, { status: 500 })
+    }
 
-ORIGINAL RESUME:
-${resumeText}
+    const { tailoredText, matchScore, improvements } = aiResult.data
 
-JOB DESCRIPTION:
-${jobDescription}
-
-RULES:
-- Mirror keywords and phrases from the job description naturally
-- Keep all factual info accurate (names, companies, dates)
-- Use ALL CAPS for section headers (EXPERIENCE, EDUCATION, SKILLS, etc.)
-- Use "- " for every bullet point
-- Add metrics where logical
-- No markdown, no JSON, no code fences
-
-After the resume, on a new line write exactly:
-MATCH_SCORE: [number between 75-98]
-IMPROVEMENTS:
-- [improvement 1]
-- [improvement 2]
-- [improvement 3]
-- [improvement 4]
-- [improvement 5]`
-
-    const geminiResult = await model.generateContent(prompt)
-    const raw = geminiResult.response.text().replace(/```[\s\S]*?```/g, '').trim()
-
-    // Parse out score and improvements
-    const scoreMatch = raw.match(/MATCH_SCORE:\s*(\d+)/)
-    const matchScore = scoreMatch ? parseInt(scoreMatch[1]) : 85
-    const impSection = raw.match(/IMPROVEMENTS:\n([\s\S]+)$/)
-    const improvements = impSection
-      ? impSection[1].split('\n').filter(l => l.trim().startsWith('-')).map(l => l.replace(/^-\s*/, '').trim())
-      : []
-    const tailoredText = raw.replace(/MATCH_SCORE:[\s\S]*$/, '').trim()
-
+    // ─── Generate DOCX and PDF ─────────────────────────────────────────────────
     const docxBuffer = await buildDocx(tailoredText)
     const docxBase64 = docxBuffer.toString('base64')
     const pdfHtmlBase64 = Buffer.from(buildPdfHtml(tailoredText)).toString('base64')
 
-    await supabase.from('profiles').update({ scans: profile.scans - 3 }).eq('id', userId)
-    await supabase.from('scan_logs').insert({ user_id: userId, action_type: 'tailor_to_job', scans_used: 3, created_at: new Date().toISOString() })
+    // ─── Log the scan usage ─────────────────────────────────────────────────────
+    await supabase.from('scan_logs').insert({
+      user_id: userId,
+      action_type: 'tailor_to_job',
+      scans_used: TAILOR_SCAN_COST,
+      created_at: new Date().toISOString(),
+    })
 
-    return NextResponse.json({ tailoredText, docxBase64, pdfHtmlBase64, matchScore, improvements })
+    return NextResponse.json({
+      tailoredText,
+      docxBase64,
+      pdfHtmlBase64,
+      matchScore,
+      improvements,
+    })
+
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 })
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed' },
+      { status: 500 },
+    )
   }
 }

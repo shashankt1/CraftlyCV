@@ -1,42 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
+// SECURE: All admin updates go through the RPC which verifies admin role server-side
 export async function POST(request: NextRequest) {
   try {
-    const { userId, scanAdjust, plan } = await request.json()
-    if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
+    const body = await request.json()
+    const { targetUserId, scanAdjustment, newPlan, newRole } = body
 
-    const supabase = await createAdminClient()
-    const updates: Record<string, any> = {}
-
-    if (plan) updates.plan = plan
-
-    if (scanAdjust !== undefined && scanAdjust !== null && !isNaN(scanAdjust)) {
-      // Get current scans
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('scans')
-        .eq('id', userId)
-        .single()
-
-      if (profile) {
-        const newScans = Math.max(0, profile.scans + scanAdjust)
-        updates.scans = newScans
-      }
+    if (!targetUserId) {
+      return NextResponse.json({ error: 'Missing targetUserId' }, { status: 400 })
     }
 
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+    // ─── Authenticate the Admin (server-side session check) ─────────────────────
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized - no valid session' }, { status: 401 })
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', userId)
+    // ─── Use RPC for atomic admin action with audit logging ────────────────────
+    const { data: result, error: rpcError } = await supabase.rpc('admin_update_user', {
+      p_admin_id: user.id,
+      p_target_user_id: targetUserId,
+      p_scan_adjustment: scanAdjustment ?? null,
+      p_new_plan: newPlan ?? null,
+      p_new_role: newRole ?? null,
+    })
 
-    if (error) throw error
+    if (rpcError) {
+      console.error('Admin update RPC error:', rpcError)
+      return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    }
 
-    return NextResponse.json({ success: true })
+    const parsedResult = typeof result === 'string' ? JSON.parse(result) : result
+
+    if (!parsedResult.success) {
+      return NextResponse.json({ error: parsedResult.error || 'Update failed' }, { status: 403 })
+    }
+
+    return NextResponse.json({ success: true, message: 'User updated successfully' })
+
   } catch (error) {
     return NextResponse.json({ error: 'Update failed' }, { status: 500 })
   }

@@ -1,4 +1,4 @@
-// File: /app/frontend/src/app/api/auth/callback/route.ts
+// File: C:\Users\Shashank tiwari\OneDrive\Desktop\Resume-Builder\frontend\src\app\api\auth\callback\route.ts
 import * as entry from '../../../../../../src/app/api/auth/callback/route.js'
 import type { NextRequest } from 'next/server.js'
 

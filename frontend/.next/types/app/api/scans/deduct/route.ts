@@ -1,4 +1,4 @@
-// File: /app/frontend/src/app/api/scans/deduct/route.ts
+// File: C:\Users\Shashank tiwari\OneDrive\Desktop\Resume-Builder\frontend\src\app\api\scans\deduct\route.ts
 import * as entry from '../../../../../../src/app/api/scans/deduct/route.js'
 import type { NextRequest } from 'next/server.js'
 

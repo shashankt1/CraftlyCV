@@ -1,4 +1,4 @@
-// File: /app/frontend/src/app/onboarding/page.tsx
+// File: C:\Users\Shashank tiwari\OneDrive\Desktop\Resume-Builder\frontend\src\app\onboarding\page.tsx
 import * as entry from '../../../../src/app/onboarding/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

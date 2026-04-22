@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createClient, createAdminClient } from '@/lib/supabase/server'
-
-// In-memory store for idempotency (use Redis/DB in production)
-const processedPayments = new Set<string>()
+import { createAdminClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,8 +12,11 @@ export async function POST(request: NextRequest) {
       userId,
       planId,
       scans,
+      amount,
+      currency = 'INR',
     } = body
 
+    // ─── Input Validation ──────────────────────────────────────────────────────
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return NextResponse.json({ error: 'Missing payment fields' }, { status: 400 })
     }
@@ -25,12 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing userId or scans' }, { status: 400 })
     }
 
-    // Idempotency check
-    if (processedPayments.has(razorpay_payment_id)) {
-      return NextResponse.json({ success: true, message: 'Payment already processed', alreadyProcessed: true })
-    }
-
-    // Verify signature
+    // ─── Server-side Signature Verification ────────────────────────────────────
     const secret = process.env.RAZORPAY_KEY_SECRET
     if (!secret) {
       return NextResponse.json({ error: 'Payment verification not configured' }, { status: 500 })
@@ -46,53 +41,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid payment signature' }, { status: 400 })
     }
 
-    // Mark as processed
-    processedPayments.add(razorpay_payment_id)
-
-    // Use admin client for server-side operations
+    // ─── Idempotent Payment Recording using Supabase RPC ────────────────────────
     const supabase = await createAdminClient()
 
-    // Add scans atomically using RPC or direct update
-    // First try RPC function if it exists
-    const { error: rpcError } = await supabase.rpc('add_scans', {
+    const { data: result, error: rpcError } = await supabase.rpc('record_payment', {
+      p_payment_id: razorpay_payment_id,
       p_user_id: userId,
-      p_amount: scans,
+      p_order_id: razorpay_order_id,
+      p_plan_id: planId || 'free',
+      p_scans_added: scans,
+      p_amount: amount || 0,
+      p_currency: currency,
     })
 
     if (rpcError) {
-      // Fallback to direct update if RPC doesn't exist
-      const { data: currentProfile } = await supabase
-        .from('profiles')
-        .select('scans, plan')
-        .eq('id', userId)
-        .single()
-
-      if (currentProfile) {
-        const newScans = (currentProfile.scans || 0) + scans
-        await supabase
-          .from('profiles')
-          .update({ scans: newScans, plan: planId || currentProfile.plan })
-          .eq('id', userId)
-      }
+      console.error('Payment RPC error:', rpcError)
+      return NextResponse.json({ error: 'Payment processing failed' }, { status: 500 })
     }
 
-    // Log transaction
-    await supabase.from('payment_transactions').insert({
-      user_id: userId,
-      payment_id: razorpay_payment_id,
-      order_id: razorpay_order_id,
-      plan_id: planId,
-      scans_added: scans,
-      amount: body.amount || 0,
-      status: 'completed',
-      created_at: new Date().toISOString(),
-    })
+    const parsedResult = typeof result === 'string' ? JSON.parse(result) : result
+
+    if (!parsedResult.success && parsedResult.already_processed) {
+      // Payment was already processed - return success without processing again
+      return NextResponse.json({
+        success: true,
+        message: 'Payment already processed',
+        alreadyProcessed: true,
+      })
+    }
+
+    if (!parsedResult.success) {
+      return NextResponse.json({ error: parsedResult.error || 'Payment recording failed' }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Payment verified and scans added',
       paymentId: razorpay_payment_id,
     })
+
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Payment verification failed'
     return NextResponse.json({ error: message }, { status: 500 })

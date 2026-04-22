@@ -361,9 +361,9 @@ function PageBg() {
       <div className="absolute -top-60 -left-60 w-[800px] h-[800px] rounded-full opacity-[0.10]"
         style={{ background: 'radial-gradient(circle, #1E6FD9 0%, transparent 70%)' }} />
       <div className="absolute top-1/2 -right-40 w-[600px] h-[600px] rounded-full opacity-[0.08]"
-        style={{ background: 'radial-gradient(circle, #FF6B35 0%, transparent 70%)' />
+        style={{ background: 'radial-gradient(circle, #FF6B35 0%, transparent 70%)' }} />
       <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] rounded-full opacity-[0.06]"
-        style={{ background: 'radial-gradient(circle, #7c3aed 0%, transparent 70%)' />
+        style={{ background: 'radial-gradient(circle, #7c3aed 0%, transparent 70%)' }} />
       <div className="absolute inset-0 opacity-[0.025]"
         style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
     </div>

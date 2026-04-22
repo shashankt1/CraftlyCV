@@ -1,48 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createAdminClient } from '@/lib/supabase/server'
+import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
+import { aiRouter } from '@/lib/ai-router'
+
+const LINKEDIN_SCAN_COST = 2
 
 export async function POST(request: NextRequest) {
   try {
     const { profileText, userId } = await request.json()
     if (!profileText || !userId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
+    // ─── RATE LIMITING ─────────────────────────────────────────────────────────
+    const rateLimit = await checkRateLimit(userId, 'linkedin', 10, 60)
+    if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit.retryAfter || 60)
+
     const supabase = await createAdminClient()
-    const { data: profile } = await supabase.from('profiles').select('scans').eq('id', userId).single()
-    if (!profile || profile.scans < 2) return NextResponse.json({ error: 'Need 2 scans' }, { status: 402 })
 
-    const apiKey = process.env.GEMINI_API_KEY!
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    // ─── ATOMIC SCAN DEDUCTION ───────────────────────────────────────────────────
+    const { data: deductResult, error: deductError } = await supabase
+      .rpc('deduct_scan', { p_user_id: userId, p_amount: LINKEDIN_SCAN_COST })
 
-    const prompt = `You are a LinkedIn profile optimization expert. Analyze this LinkedIn profile content and provide detailed scoring and suggestions.
+    if (deductError) return NextResponse.json({ error: 'Database error' }, { status: 500 })
 
-PROFILE CONTENT:
-${profileText}
+    const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
+    if (!parsedResult.success) {
+      const err = parsedResult.error || ''
+      if (err === 'Insufficient scans') return NextResponse.json({ error: 'Need 2 scans' }, { status: 402 })
+      return NextResponse.json({ error: err }, { status: 400 })
+    }
 
-Respond ONLY with valid JSON in this exact format:
-{
-  "overallScore": [integer 0-100],
-  "summary": "[2 sentence overall assessment]",
-  "sectionScores": [
-    {"section": "Headline", "score": [0-100], "current": "[what they have]", "suggestion": "[specific improvement]"},
-    {"section": "About/Summary", "score": [0-100], "current": "[what they have]", "suggestion": "[specific improvement]"},
-    {"section": "Experience", "score": [0-100], "current": "[what they have]", "suggestion": "[specific improvement]"},
-    {"section": "Skills", "score": [0-100], "current": "[assessment]", "suggestion": "[specific improvement]"},
-    {"section": "Keywords & SEO", "score": [0-100], "current": "[assessment]", "suggestion": "[specific improvement]"}
-  ],
-  "topFixes": ["[fix 1]", "[fix 2]", "[fix 3]", "[fix 4]", "[fix 5]"],
-  "keywordsMissing": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8"]
-}`
+    // ─── Call AI Brain ──────────────────────────────────────────────────────────
+    const aiResult = await aiRouter({
+      mode: 'career',
+      userId,
+      context: { linkedInProfile: profileText },
+    })
 
-    const result = await model.generateContent(prompt)
-    const raw = result.response.text().replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(raw)
+    if (!aiResult.success) {
+      await supabase.rpc('add_scans', { p_user_id: userId, p_amount: LINKEDIN_SCAN_COST })
+      return NextResponse.json({ error: aiResult.error }, { status: 500 })
+    }
 
-    await supabase.from('profiles').update({ scans: profile.scans - 2 }).eq('id', userId)
-    await supabase.from('scan_logs').insert({ user_id: userId, action_type: 'linkedin_analyzer', scans_used: 2, created_at: new Date().toISOString() })
+    // ─── LOG USAGE ────────────────────────────────────────────────────────────
+    await supabase.from('scan_logs').insert({
+      user_id: userId, action_type: 'linkedin_analyzer', scans_used: LINKEDIN_SCAN_COST, created_at: new Date().toISOString(),
+    })
 
-    return NextResponse.json(parsed)
+    return NextResponse.json(aiResult.data)
+
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 })
   }

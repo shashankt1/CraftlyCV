@@ -1,4 +1,4 @@
-// File: /app/frontend/src/app/auth/page.tsx
+// File: C:\Users\Shashank tiwari\OneDrive\Desktop\Resume-Builder\frontend\src\app\auth\page.tsx
 import * as entry from '../../../../src/app/auth/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

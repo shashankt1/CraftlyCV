@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { FileText, ArrowLeft, Users, Zap, Heart, Rocket, Target, TrendingUp, CheckCircle } from 'lucide-react'
+import { FileText, ArrowLeft, Users, Zap, Heart, Rocket, Target, TrendingUp, CheckCircle, MessageSquare, Search, DollarSign } from 'lucide-react'
 
 export default function AboutPage() {
   return (

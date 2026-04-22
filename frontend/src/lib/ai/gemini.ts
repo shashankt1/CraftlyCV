@@ -580,3 +580,20 @@ export function getAIProvider(): string {
   if (GEMINI_API_KEY) return 'gemini'
   return 'none'
 }
+
+// ─── Timeout Wrapper for AI Calls ─────────────────────────────────────────────
+
+export async function generateWithTimeout(
+  model: any,
+  prompt: string,
+  timeoutMs: number = 8000
+): Promise<any> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], signal: controller.signal })
+    return result
+  } finally {
+    clearTimeout(timeout)
+  }
+}

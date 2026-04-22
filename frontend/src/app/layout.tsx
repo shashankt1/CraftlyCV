@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/ui/sonner'
+import { ErrorBoundary } from '@/components/error-boundary'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -47,10 +48,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-          {children}
-          <Toaster position="top-right" richColors />
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+            {children}
+            <Toaster position="top-right" richColors />
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   )

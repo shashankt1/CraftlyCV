@@ -1,118 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createAdminClient } from '@/lib/supabase/server'
+import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
+import { aiRouter } from '@/lib/ai-router'
+
+const IMPROVE_SCAN_COST = 2
 
 async function extractTextFromFile(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer())
   if (file.type === 'application/pdf') {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const pdfParse = require('pdf-parse')
-    const parsed = await pdfParse(buffer)
-    return parsed.text
+    return (await pdfParse(buffer)).text
   }
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const mammoth = require('mammoth')
-  const result = await mammoth.extractRawText({ buffer })
-  return result.value
+  return (await mammoth.extractRawText({ buffer })).value
 }
 
 async function buildDocx(resumeText: string): Promise<Buffer> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle } = require('docx')
-
   const lines = resumeText.split('\n')
   const children: any[] = []
   let nameSet = false
-
   for (const line of lines) {
     const trimmed = line.trim()
-    if (!trimmed) {
-      children.push(new Paragraph({ spacing: { after: 80 } }))
-      continue
-    }
-
-    const isHeader =
-      trimmed === trimmed.toUpperCase() &&
-      trimmed.length > 2 &&
-      !/^\d/.test(trimmed) &&
-      !trimmed.includes('@')
-
+    if (!trimmed) { children.push(new Paragraph({ spacing: { after: 80 } })); continue }
+    const isHeader = trimmed === trimmed.toUpperCase() && trimmed.length > 2 && !/^\d/.test(trimmed) && !trimmed.includes('@')
     if (!nameSet) {
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: trimmed, bold: true, size: 32, color: '1e3a8a' })],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 120 },
-        })
-      )
+      children.push(new Paragraph({ children: [new TextRun({ text: trimmed, bold: true, size: 32, color: '1e3a8a' })], alignment: AlignmentType.CENTER, spacing: { after: 120 } }))
       nameSet = true
     } else if (isHeader) {
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: trimmed, bold: true, size: 22, color: '1e40af' })],
-          spacing: { before: 240, after: 80 },
-          border: { bottom: { color: 'bfdbfe', size: 6, style: BorderStyle.SINGLE } },
-        })
-      )
+      children.push(new Paragraph({ children: [new TextRun({ text: trimmed, bold: true, size: 22, color: '1e40af' })], spacing: { before: 240, after: 80 }, border: { bottom: { color: 'bfdbfe', size: 6, style: BorderStyle.SINGLE } } }))
     } else if (/^[-•*]/.test(trimmed)) {
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: trimmed.replace(/^[-•*]\s*/, ''), size: 20 })],
-          bullet: { level: 0 },
-          spacing: { after: 60 },
-        })
-      )
+      children.push(new Paragraph({ children: [new TextRun({ text: trimmed.replace(/^[-•*]\s*/, ''), size: 20 })], bullet: { level: 0 }, spacing: { after: 60 } }))
     } else {
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: trimmed, size: 20 })],
-          spacing: { after: 60 },
-        })
-      )
+      children.push(new Paragraph({ children: [new TextRun({ text: trimmed, size: 20 })], spacing: { after: 60 } }))
     }
   }
-
-  const doc = new Document({
-    sections: [{
-      properties: { page: { margin: { top: 720, bottom: 720, left: 900, right: 900 } } },
-      children,
-    }],
-  })
-
+  const doc = new Document({ sections: [{ properties: { page: { margin: { top: 720, bottom: 720, left: 900, right: 900 } } }, children }] })
   return Packer.toBuffer(doc)
 }
 
 function buildPdfHtml(resumeText: string): string {
   const lines = resumeText.split('\n')
-  let html = ''
-  let nameSet = false
-
+  let html = ''; let nameSet = false
   for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed) { html += '<div style="margin:5px 0"></div>'; continue }
-
-    const isHeader =
-      trimmed === trimmed.toUpperCase() &&
-      trimmed.length > 2 &&
-      !/^\d/.test(trimmed) &&
-      !trimmed.includes('@')
-
+    const t = line.trim()
+    if (!t) { html += '<div style="margin:5px 0"></div>'; continue }
+    const isHeader = t === t.toUpperCase() && t.length > 2 && !/^\d/.test(t) && !t.includes('@')
     if (!nameSet) {
-      html += `<h1 style="text-align:center;color:#1e3a8a;font-size:22px;margin:0 0 8px;font-family:Georgia,serif;font-weight:700">${trimmed}</h1>`
-      nameSet = true
+      html += `<h1 style="text-align:center;color:#1e3a8a;font-size:22px;margin:0 0 8px;font-family:Georgia,serif;font-weight:700">${t}</h1>`; nameSet = true
     } else if (isHeader) {
-      html += `<h2 style="color:#1e40af;font-size:12px;font-weight:700;margin:18px 0 4px;padding-bottom:3px;border-bottom:2px solid #bfdbfe;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.06em">${trimmed}</h2>`
-    } else if (/^[-•*]/.test(trimmed)) {
-      html += `<div style="display:flex;gap:8px;margin:2px 0;font-size:11px;line-height:1.55;font-family:Arial,sans-serif;color:#374151"><span style="color:#3b82f6;flex-shrink:0;margin-top:1px">▸</span><span>${trimmed.replace(/^[-•*]\s*/, '')}</span></div>`
+      html += `<h2 style="color:#1e40af;font-size:12px;font-weight:700;margin:18px 0 4px;padding-bottom:3px;border-bottom:2px solid #bfdbfe;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.06em">${t}</h2>`
+    } else if (/^[-•*]/.test(t)) {
+      html += `<div style="display:flex;gap:8px;margin:2px 0;font-size:11px;line-height:1.55;font-family:Arial,sans-serif;color:#374151"><span style="color:#3b82f6;flex-shrink:0;margin-top:1px">▸</span><span>${t.replace(/^[-•*]\s*/, '')}</span></div>`
     } else {
-      html += `<p style="margin:2px 0;font-size:11px;line-height:1.55;font-family:Arial,sans-serif;color:#374151">${trimmed}</p>`
+      html += `<p style="margin:2px 0;font-size:11px;line-height:1.55;font-family:Arial,sans-serif;color:#374151">${t}</p>`
     }
   }
-
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>*{box-sizing:border-box}body{margin:0;padding:36px 44px;background:white;color:#1f2937}
-@page{margin:0}@media print{body{padding:28px 36px}}</style>
-</head><body>${html}</body></html>`
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{box-sizing:border-box}body{margin:0;padding:36px 44px;background:white;color:#1f2937}@page{margin:0}@media print{body{padding:28px 36px}}</style></head><body>${html}</body></html>`
 }
 
 export async function POST(request: NextRequest) {
@@ -126,78 +70,61 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing file or userId' }, { status: 400 })
     }
 
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large. Maximum 10MB.' }, { status: 400 })
+    }
+
+    // ─── RATE LIMITING ───────────────────────────────────────────────────────
+    const rateLimit = await checkRateLimit(userId, 'improve', 10, 60)
+    if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit.retryAfter || 60)
+
+    const supabase = await createAdminClient()
+
+    // ─── ATOMIC SCAN DEDUCTION ─────────────────────────────────────────────────
+    const { data: deductResult, error: deductError } = await supabase
+      .rpc('deduct_scan', { p_user_id: userId, p_amount: IMPROVE_SCAN_COST })
+
+    if (deductError) return NextResponse.json({ error: 'Database error' }, { status: 500 })
+
+    const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
+    if (!parsedResult.success) {
+      const err = parsedResult.error || ''
+      if (err === 'Insufficient scans') return NextResponse.json({ error: 'Need 2 scans' }, { status: 402 })
+      return NextResponse.json({ error: err }, { status: 400 })
+    }
+
+    // ─── Extract and Process ───────────────────────────────────────────────────
     const improvements: string[] = JSON.parse(improvementsRaw || '[]')
     const resumeText = await extractTextFromFile(file)
 
-    // Check scans
-    const supabase = await createAdminClient()
-    const { data: profile, error: fetchError } = await supabase
-      .from('profiles')
-      .select('scans')
-      .eq('id', userId)
-      .single()
+    // ─── Call AI Brain ──────────────────────────────────────────────────────────
+    const aiResult = await aiRouter({
+      mode: 'resume',
+      userId,
+      resumeText,
+      improvements,
+    })
 
-    if (fetchError || !profile) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-    if (profile.scans < 2) {
-      return NextResponse.json({ error: 'Need at least 2 scans to improve resume' }, { status: 402 })
+    if (!aiResult.success) {
+      await supabase.rpc('add_scans', { p_user_id: userId, p_amount: IMPROVE_SCAN_COST })
+      return NextResponse.json({ error: aiResult.error }, { status: 500 })
     }
 
-    // Call Gemini
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
+    const { improvedText } = aiResult.data
 
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-
-    const prompt = `You are an expert resume writer. Rewrite this resume to be more ATS-friendly and impactful.
-
-ORIGINAL RESUME:
-${resumeText}
-
-IMPROVEMENTS TO APPLY:
-${improvements.map((imp, i) => `${i + 1}. ${imp}`).join('\n')}
-
-STRICT FORMATTING RULES:
-- First line must be the person's full name only
-- Use ALL CAPS for every section header (EXPERIENCE, EDUCATION, SKILLS, PROJECTS, CERTIFICATIONS, SUMMARY, etc.)
-- Use "- " to start every bullet point
-- Keep all facts accurate (names, companies, dates, numbers)
-- Use strong action verbs
-- Add metrics where logically possible
-- No markdown, no JSON, no code fences, no asterisks for bold
-
-Return ONLY the plain text resume. Nothing else.`
-
-    const geminiResult = await model.generateContent(prompt)
-    const improvedText = geminiResult.response.text().replace(/```[\s\S]*?```/g, '').trim()
-
-    // Build DOCX
     const docxBuffer = await buildDocx(improvedText)
     const docxBase64 = docxBuffer.toString('base64')
-
-    // Build PDF HTML
     const pdfHtml = buildPdfHtml(improvedText)
     const pdfHtmlBase64 = Buffer.from(pdfHtml).toString('base64')
 
-    // Deduct 2 scans
-    await supabase
-      .from('profiles')
-      .update({ scans: profile.scans - 2 })
-      .eq('id', userId)
-
-    // Log usage
+    // ─── LOG USAGE ───────────────────────────────────────────────────────────
     await supabase.from('scan_logs').insert({
-      user_id: userId,
-      action_type: 'improve_resume',
-      scans_used: 2,
-      created_at: new Date().toISOString(),
+      user_id: userId, action_type: 'improve_resume', scans_used: IMPROVE_SCAN_COST, created_at: new Date().toISOString(),
     })
 
     return NextResponse.json({ improvedText, docxBase64, pdfHtmlBase64 })
+
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Improvement failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Improvement failed' }, { status: 500 })
   }
 }
