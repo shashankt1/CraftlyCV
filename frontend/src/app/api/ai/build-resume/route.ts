@@ -1,40 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
-import { aiRouter, buildSummary, buildBullets } from '@/lib/ai-router'
+import { aiRouter } from '@/lib/ai-router'
+
+const SCAN_COST = 1
+
+async function extractTextFromFile(file: File): Promise<string> {
+  const buffer = Buffer.from(await file.arrayBuffer())
+  if (file.type === 'application/pdf') {
+    const pdfParse = require('pdf-parse')
+    const parsed = await pdfParse(buffer)
+    return parsed.text
+  }
+  const mammoth = require('mammoth')
+  const result = await mammoth.extractRawText({ buffer })
+  return result.value
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { task, userId } = body
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const userId = formData.get('userId') as string
 
-    if (!task) return NextResponse.json({ error: 'Missing task' }, { status: 400 })
-
-    // ─── RATE LIMITING ─────────────────────────────────────────────────────────
-    if (userId) {
-      const rateLimit = await checkRateLimit(userId, 'build_resume', 15, 60)
-      if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit.retryAfter || 60)
+    if (!file || !userId) {
+      return NextResponse.json({ error: 'Missing file or userId' }, { status: 400 })
     }
 
-    if (task === 'summary') {
-      const { data } = body
-      const result = await buildSummary({
-        name: data?.name,
-        workExp: data?.workExp,
-        skills: data?.skills,
-        education: data?.education,
-      })
-      return NextResponse.json({ result })
+    // ─── RATE LIMITING ───────────────────────────────────────────────────────────
+    const rateLimit = await checkRateLimit(userId, 'analyze', 10, 60)
+    if (!rateLimit?.success) {
+      return rateLimitExceededResponse(rateLimit?.retryAfter || 60)
     }
 
-    if (task === 'bullets') {
-      const { company, role, bullets } = body
-      const result = await buildBullets(company || '', role || '', bullets || [])
-      return NextResponse.json({ result })
+    const supabase = await createAdminClient()
+
+    // ─── ATOMIC SCAN DEDUCTION using RPC ─────────────────────────────────────────
+    const { data: deductResult, error: deductError } = await supabase
+      .rpc('deduct_scan', { p_user_id: userId, p_amount: SCAN_COST })
+
+    if (deductError) {
+      return NextResponse.json({ error: 'Database error during scan deduction' }, { status: 500 })
     }
 
-    return NextResponse.json({ error: 'Unknown task' }, { status: 400 })
+    const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
+
+    if (!parsedResult.success) {
+      const errorMsg = parsedResult.error || 'Unknown error'
+      if (errorMsg === 'Insufficient scans') {
+        return NextResponse.json({ error: 'Not enough scans' }, { status: 402 })
+      }
+      return NextResponse.json({ error: errorMsg }, { status: 400 })
+    }
+
+    // ─── Extract resume text ─────────────────────────────────────────────────────
+    const resumeText = await extractTextFromFile(file)
+
+    // ─── Call AI Brain ──────────────────────────────────────────────────────────
+    const aiResult = await aiRouter({
+      mode: 'resume',
+      userId,
+      resumeText,
+    })
+
+    if (!aiResult.success) {
+      // Refund scan on AI failure
+      await supabase.rpc('add_scans', { p_user_id: userId, p_amount: SCAN_COST })
+      return NextResponse.json({ error: aiResult.error }, { status: 500 })
+    }
+
+    // ─── Log the scan usage ───────────────────────────────────────────────────
+    await supabase.from('scan_logs').insert({
+      user_id: userId,
+      action_type: 'ats_analysis',
+      scans_used: SCAN_COST,
+      created_at: new Date().toISOString(),
+    })
+
+    return NextResponse.json(aiResult.data)
 
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Analysis failed'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

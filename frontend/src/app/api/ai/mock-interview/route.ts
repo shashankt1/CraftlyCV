@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
-import { getGenerativeModel, GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       }
 
       const rateLimit = await checkRateLimit(userId, 'interview', 10, 60)
-      if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit.retryAfter || 60)
+      if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit?.retryAfter || 60)
 
       // Atomic scan deduction
       const { data: deductResult, error: deductError } = await supabase

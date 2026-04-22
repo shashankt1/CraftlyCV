@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     // ─── RATE LIMITING ─────────────────────────────────────────────────────────
     const rateLimit = await checkRateLimit(userId, 'jobs', 10, 60)
-    if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit.retryAfter || 60)
+    if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit?.retryAfter || 60)
 
     const supabase = await createAdminClient()
 
