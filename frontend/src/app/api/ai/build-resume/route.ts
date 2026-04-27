@@ -1,86 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
 import { aiRouter } from '@/lib/ai-router'
 
-const SCAN_COST = 1
-
-async function extractTextFromFile(file: File): Promise<string> {
-  const buffer = Buffer.from(await file.arrayBuffer())
-  if (file.type === 'application/pdf') {
-    const pdfParse = require('pdf-parse')
-    const parsed = await pdfParse(buffer)
-    return parsed.text
-  }
-  const mammoth = require('mammoth')
-  const result = await mammoth.extractRawText({ buffer })
-  return result.value
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
-    const userId = formData.get('userId') as string
+    const body = await request.json()
+    const { task, userId } = body
 
-    if (!file || !userId) {
-      return NextResponse.json({ error: 'Missing file or userId' }, { status: 400 })
+    if (!task) return NextResponse.json({ success: false, error: 'Missing task' }, { status: 400 })
+
+    // ─── RATE LIMITING ─────────────────────────────────────────────────────────
+    if (userId) {
+      const rateLimit = await checkRateLimit(userId, 'build_resume', 15, 60)
+      if (!rateLimit?.success) return rateLimitExceededResponse(rateLimit?.retryAfter || 60)
     }
 
-    // ─── RATE LIMITING ───────────────────────────────────────────────────────────
-    const rateLimit = await checkRateLimit(userId, 'analyze', 10, 60)
-    if (!rateLimit?.success) {
-      return rateLimitExceededResponse(rateLimit?.retryAfter || 60)
+    if (task === 'summary') {
+      const { data } = body
+      const result = await aiRouter({
+        mode: 'general',
+        userId: userId || 'anonymous',
+        query: `Write a professional summary: Name: ${data?.name || ''}, Role: ${data?.workExp?.[0]?.role || ''}, Companies: ${data?.workExp?.map((w: any) => w.company).join(', ') || ''}, Skills: ${data?.skills?.join(', ') || ''}`,
+      })
+      return NextResponse.json({ success: true, data: { result: result.success ? result.data?.response : 'Professional summary generation unavailable' } })
     }
 
-    const supabase = await createAdminClient()
-
-    // ─── ATOMIC SCAN DEDUCTION using RPC ─────────────────────────────────────────
-    const { data: deductResult, error: deductError } = await supabase
-      .rpc('deduct_scan', { p_user_id: userId, p_amount: SCAN_COST })
-
-    if (deductError) {
-      return NextResponse.json({ error: 'Database error during scan deduction' }, { status: 500 })
+    if (task === 'bullets') {
+      const { company, role, bullets } = body
+      const result = await aiRouter({
+        mode: 'resume',
+        userId: userId || 'anonymous',
+        resumeText: `Company: ${company}, Role: ${role}\nBullets: ${(bullets || []).join('\n')}`,
+      })
+      return NextResponse.json({ success: true, data: { result: result.success ? result.data : bullets } })
     }
 
-    const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
-
-    if (!parsedResult.success) {
-      const errorMsg = parsedResult.error || 'Unknown error'
-      if (errorMsg === 'Insufficient scans') {
-        return NextResponse.json({ error: 'Not enough scans' }, { status: 402 })
-      }
-      return NextResponse.json({ error: errorMsg }, { status: 400 })
-    }
-
-    // ─── Extract resume text ─────────────────────────────────────────────────────
-    const resumeText = await extractTextFromFile(file)
-
-    // ─── Call AI Brain ──────────────────────────────────────────────────────────
-    const aiResult = await aiRouter({
-      mode: 'resume',
-      userId,
-      resumeText,
-    })
-
-    if (!aiResult.success) {
-      // Refund scan on AI failure
-      await supabase.rpc('add_scans', { p_user_id: userId, p_amount: SCAN_COST })
-      return NextResponse.json({ error: aiResult.error }, { status: 500 })
-    }
-
-    // ─── Log the scan usage ───────────────────────────────────────────────────
-    await supabase.from('scan_logs').insert({
-      user_id: userId,
-      action_type: 'ats_analysis',
-      scans_used: SCAN_COST,
-      created_at: new Date().toISOString(),
-    })
-
-    return NextResponse.json(aiResult.data)
+    return NextResponse.json({ success: false, error: 'Unknown task' }, { status: 400 })
 
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Analysis failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed' }, { status: 500 })
   }
 }

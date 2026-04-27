@@ -8,15 +8,15 @@ const IMPROVE_SCAN_COST = 2
 async function extractTextFromFile(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer())
   if (file.type === 'application/pdf') {
-    const pdfParse = require('pdf-parse')
-    return (await pdfParse(buffer)).text
+    const pdfParse = await import('pdf-parse')
+    return (await pdfParse.default(buffer)).text
   }
-  const mammoth = require('mammoth')
+  const mammoth = await import('mammoth')
   return (await mammoth.extractRawText({ buffer })).value
 }
 
 async function buildDocx(resumeText: string): Promise<Buffer> {
-  const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle } = require('docx')
+  const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle } = await import('docx')
   const lines = resumeText.split('\n')
   const children: any[] = []
   let nameSet = false
@@ -67,11 +67,11 @@ export async function POST(request: NextRequest) {
     const improvementsRaw = formData.get('improvements') as string
 
     if (!file || !userId) {
-      return NextResponse.json({ error: 'Missing file or userId' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Missing file or userId' }, { status: 400 })
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: 'File too large. Maximum 10MB.' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'File too large. Maximum 10MB.' }, { status: 400 })
     }
 
     // ─── RATE LIMITING ───────────────────────────────────────────────────────
@@ -84,13 +84,13 @@ export async function POST(request: NextRequest) {
     const { data: deductResult, error: deductError } = await supabase
       .rpc('deduct_scan', { p_user_id: userId, p_amount: IMPROVE_SCAN_COST })
 
-    if (deductError) return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    if (deductError) return NextResponse.json({ success: false, error: 'Database error' }, { status: 500 })
 
     const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
     if (!parsedResult.success) {
       const err = parsedResult.error || ''
-      if (err === 'Insufficient scans') return NextResponse.json({ error: 'Need 2 scans' }, { status: 402 })
-      return NextResponse.json({ error: err }, { status: 400 })
+      if (err === 'Insufficient scans') return NextResponse.json({ success: false, error: 'Need 2 scans' }, { status: 402 })
+      return NextResponse.json({ success: false, error: err }, { status: 400 })
     }
 
     // ─── Extract and Process ───────────────────────────────────────────────────
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     if (!aiResult.success) {
       await supabase.rpc('add_scans', { p_user_id: userId, p_amount: IMPROVE_SCAN_COST })
-      return NextResponse.json({ error: aiResult.error }, { status: 500 })
+      return NextResponse.json({ success: false, error: aiResult.error }, { status: 500 })
     }
 
     const { improvedText } = aiResult.data
@@ -122,9 +122,12 @@ export async function POST(request: NextRequest) {
       user_id: userId, action_type: 'improve_resume', scans_used: IMPROVE_SCAN_COST, created_at: new Date().toISOString(),
     })
 
-    return NextResponse.json({ improvedText, docxBase64, pdfHtmlBase64 })
+    return NextResponse.json({
+      success: true,
+      data: { improvedText, docxBase64, pdfHtmlBase64 },
+    })
 
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Improvement failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Improvement failed' }, { status: 500 })
   }
 }

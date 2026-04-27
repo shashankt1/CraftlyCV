@@ -229,7 +229,7 @@ export function canUseFeature(planId: PlanId, feature: keyof typeof PLAN_LIMITS[
   const limits = PLAN_LIMITS[planId]
   const value = limits[feature]
   if (typeof value === 'boolean') return value
-  return value !== 0
+  return value !== -1 // -1 means unlimited
 }
 
 export function formatPrice(amount: number, currency: string = 'INR'): string {

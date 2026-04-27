@@ -8,7 +8,7 @@ const LINKEDIN_SCAN_COST = 2
 export async function POST(request: NextRequest) {
   try {
     const { profileText, userId } = await request.json()
-    if (!profileText || !userId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+    if (!profileText || !userId) return NextResponse.json({ success: false, error: 'Missing fields' }, { status: 400 })
 
     // ─── RATE LIMITING ─────────────────────────────────────────────────────────
     const rateLimit = await checkRateLimit(userId, 'linkedin', 10, 60)
@@ -20,13 +20,11 @@ export async function POST(request: NextRequest) {
     const { data: deductResult, error: deductError } = await supabase
       .rpc('deduct_scan', { p_user_id: userId, p_amount: LINKEDIN_SCAN_COST })
 
-    if (deductError) return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    if (deductError) return NextResponse.json({ success: false, error: 'Database error' }, { status: 500 })
 
     const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
     if (!parsedResult.success) {
-      const err = parsedResult.error || ''
-      if (err === 'Insufficient scans') return NextResponse.json({ error: 'Need 2 scans' }, { status: 402 })
-      return NextResponse.json({ error: err }, { status: 400 })
+      return NextResponse.json({ success: false, error: parsedResult.error || 'Insufficient scans' }, { status: 402 })
     }
 
     // ─── Call AI Brain ──────────────────────────────────────────────────────────
@@ -38,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     if (!aiResult.success) {
       await supabase.rpc('add_scans', { p_user_id: userId, p_amount: LINKEDIN_SCAN_COST })
-      return NextResponse.json({ error: aiResult.error }, { status: 500 })
+      return NextResponse.json({ success: false, error: aiResult.error }, { status: 500 })
     }
 
     // ─── LOG USAGE ────────────────────────────────────────────────────────────
@@ -46,9 +44,12 @@ export async function POST(request: NextRequest) {
       user_id: userId, action_type: 'linkedin_analyzer', scans_used: LINKEDIN_SCAN_COST, created_at: new Date().toISOString(),
     })
 
-    return NextResponse.json(aiResult.data)
+    return NextResponse.json({
+      success: true,
+      data: aiResult.data,
+    })
 
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed' }, { status: 500 })
   }
 }

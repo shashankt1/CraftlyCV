@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const { userId, amount, actionType } = body
 
     if (!userId || !amount || !actionType) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 })
     }
 
     // ─── RATE LIMITING ─────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       .rpc('deduct_scan', { p_user_id: userId, p_amount: amount })
 
     if (deductError) {
-      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+      return NextResponse.json({ success: false, error: 'Database error' }, { status: 500 })
     }
 
     const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     if (!parsedResult.success) {
       const errorMsg = parsedResult.error || 'Insufficient scans'
       return NextResponse.json({
+        success: false,
         error: errorMsg,
         currentScans: parsedResult.current_scans || 0
       }, { status: 402 })
@@ -47,11 +48,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      remainingScans: parsedResult.new_scans,
+      data: {
+        remainingScans: parsedResult.new_scans,
+      },
     })
 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to deduct scans'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

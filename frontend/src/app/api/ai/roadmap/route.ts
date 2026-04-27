@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const { userId, detectedField, targetGoal, score } = await request.json()
 
     if (!userId || !targetGoal) {
-      return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Missing fields' }, { status: 400 })
     }
 
     // ─── RATE LIMITING ─────────────────────────────────────────────────────────
@@ -23,13 +23,11 @@ export async function POST(request: NextRequest) {
     const { data: deductResult, error: deductError } = await supabase
       .rpc('deduct_scan', { p_user_id: userId, p_amount: ROADMAP_SCAN_COST })
 
-    if (deductError) return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    if (deductError) return NextResponse.json({ success: false, error: 'Database error' }, { status: 500 })
 
     const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
     if (!parsedResult.success) {
-      const err = parsedResult.error || ''
-      if (err === 'Insufficient scans') return NextResponse.json({ error: 'Need 2 scans' }, { status: 402 })
-      return NextResponse.json({ error: err }, { status: 400 })
+      return NextResponse.json({ success: false, error: parsedResult.error || 'Insufficient scans' }, { status: 402 })
     }
 
     // ─── Call AI Brain ──────────────────────────────────────────────────────────
@@ -41,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     if (!aiResult.success) {
       await supabase.rpc('add_scans', { p_user_id: userId, p_amount: ROADMAP_SCAN_COST })
-      return NextResponse.json({ error: aiResult.error }, { status: 500 })
+      return NextResponse.json({ success: false, error: aiResult.error }, { status: 500 })
     }
 
     // ─── LOG USAGE ───────────────────────────────────────────────────────────
@@ -49,9 +47,12 @@ export async function POST(request: NextRequest) {
       user_id: userId, action_type: 'career_suggester', scans_used: ROADMAP_SCAN_COST, created_at: new Date().toISOString(),
     })
 
-    return NextResponse.json(aiResult.data)
+    return NextResponse.json({
+      success: true,
+      data: aiResult.data,
+    })
 
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Roadmap generation failed' }, { status: 500 })
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Roadmap generation failed' }, { status: 500 })
   }
 }

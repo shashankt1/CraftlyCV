@@ -1,6 +1,3 @@
--- Resume Health Score Circular Gauge
--- Displays ATS visibility score with pulsing animation when low
-
 import { cn } from '@/lib/utils'
 
 interface HealthScoreGaugeProps {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 // SECURE: Server-side session + role verification
 export async function GET(request: NextRequest) {
@@ -9,22 +9,22 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
     // ─── Verify Admin Role ───────────────────────────────────────────────────────
-    const { data: profile, error: profileError } = await supabase
+    const supabaseAdmin = await createAdminClient()
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
     if (profileError || !profile || profile.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden - admin access required' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 })
     }
 
     // ─── Fetch All Users (admin only) ──────────────────────────────────────────
-    const supabaseAdmin = await createClient()
     const { data: profiles, error } = await supabaseAdmin
       .from('profiles')
       .select('id, plan, scans, created_at, updated_at, role, email')
@@ -51,13 +51,13 @@ export async function GET(request: NextRequest) {
       .select('scans_used')
       .gte('created_at', today.toISOString())
 
-    const totalScansToday = (scansToday || []).reduce((sum, s) => sum + (s.scans_used || 0), 0)
+    const totalScansToday = (scansToday || []).reduce((sum: number, s: any) => sum + (s.scans_used || 0), 0)
 
     const { data: payments } = await supabaseAdmin
       .from('payment_transactions')
       .select('amount')
 
-    const totalRevenue = (payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+    const totalRevenue = (payments || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
 
     // ─── Recent Admin Audit Logs ─────────────────────────────────────────────────
     const { data: auditLogs } = await supabaseAdmin
@@ -67,17 +67,20 @@ export async function GET(request: NextRequest) {
       .limit(20)
 
     return NextResponse.json({
-      users,
-      stats: {
-        totalUsers: users.length,
-        totalScansToday,
-        totalRevenue,
+      success: true,
+      data: {
+        users,
+        stats: {
+          totalUsers: users.length,
+          totalScansToday,
+          totalRevenue,
+        },
+        recentAuditLogs: auditLogs || [],
       },
-      recentAuditLogs: auditLogs || [],
     })
 
   } catch (error) {
     console.error('Admin users fetch error:', error)
-    return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 })
+    return NextResponse.json({ success: false, error: 'Failed to fetch users' }, { status: 500 })
   }
 }

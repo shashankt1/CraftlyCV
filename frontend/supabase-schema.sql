@@ -405,3 +405,26 @@ CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_target_user_id ON admin_audit_lo
 CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_user_endpoint ON rate_limits(user_id, endpoint);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
+
+-- ─── INTERVIEW SESSIONS TABLE (Persistent multi-turn interview) ──────────────────
+CREATE TABLE IF NOT EXISTS interview_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id VARCHAR(100) UNIQUE NOT NULL,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  job_title VARCHAR(100) DEFAULT 'Software Engineer',
+  resume_text TEXT,
+  question_count INTEGER DEFAULT 0,
+  answers TEXT[] DEFAULT '{}',
+  status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'expired')),
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_interview_sessions_user_id ON interview_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_interview_sessions_session_id ON interview_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_interview_sessions_status ON interview_sessions(status);
+
+-- RLS for interview_sessions
+ALTER TABLE interview_sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "interview_sessions_own" ON interview_sessions FOR ALL USING (auth.uid() = user_id);
