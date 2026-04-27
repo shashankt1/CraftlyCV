@@ -1,24 +1,25 @@
 /**
  * POST /api/payments/verify
- * Strict Razorpay payment verification with idempotency
+ * Strict Razorpay payment verification with idempotency + referral rewards
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
+import { track } from '@/lib/analytics'
 
-// Server-side plan → price mapping (paisa)
+// Server-side plan → price mapping (in paisa for Razorpay)
 const PLAN_PRICES: Record<string, number> = {
-  career_launch: 4900,  // ₹49
-  niche_pro: 7900,      // ₹79
-  concierge: 14900,     // ₹149
+  starter: 19900,    // ₹199
+  pro: 49900,        // ₹499/month
+  lifetime: 299900,  // ₹2999
 }
 
 // Server-side plan → scans mapping
 const PLAN_SCANS: Record<string, number> = {
-  career_launch: 50,
-  niche_pro: 100,
-  concierge: 200,
+  starter: 10,
+  pro: -1, // unlimited — represented as -1
+  lifetime: -1,
 }
 
 export async function POST(request: NextRequest) {
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Verify signature
+    // Verify signature: order_id|payment_id
     const signatureBody = `${razorpay_order_id}|${razorpay_payment_id}`
     const expectedSig = crypto
       .createHmac('sha256', secret)
@@ -82,11 +83,11 @@ export async function POST(request: NextRequest) {
     // ─── Idempotent Payment Recording ──────────────────────────────────────────
     const admin = await createAdminClient()
 
-    // Check if already processed
+    // Check if already processed (idempotency)
     const { data: existing } = await admin
       .from('processed_payments')
       .select('id')
-      .eq('payment_id', razorpay_payment_id)
+      .eq('razorpay_payment_id', razorpay_payment_id)
       .single()
 
     if (existing) {
@@ -100,7 +101,12 @@ export async function POST(request: NextRequest) {
     // Mark as processed FIRST (idempotency key)
     const { error: processedError } = await admin
       .from('processed_payments')
-      .insert({ payment_id: razorpay_payment_id, user_id: userId })
+      .insert({
+        razorpay_payment_id: razorpay_payment_id,
+        user_id: userId,
+        amount: PLAN_PRICES[planId] / 100,
+        plan_id: planId,
+      })
 
     if (processedError) {
       // Duplicate - already processed
@@ -112,49 +118,78 @@ export async function POST(request: NextRequest) {
     }
 
     // ─── Record Transaction + Update User ──────────────────────────────────────
-    const scansToAdd = PLAN_SCANS[planId] ?? 0
-    const planPrice = PLAN_PRICES[planId]
-    const planName = planId.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+    const planScans = PLAN_SCANS[planId] ?? 0
+    const planPrice = PLAN_PRICES[planId] / 100 // convert to rupees
 
     // Insert transaction record
     await admin
       .from('payment_transactions')
       .insert({
         user_id: userId,
-        payment_id: razorpay_payment_id,
-        order_id: razorpay_order_id,
+        razorpay_order_id,
+        razorpay_payment_id,
         plan_id: planId,
-        plan_name: planName,
-        scans_added: scansToAdd,
         amount: planPrice,
         currency: 'INR',
         status: 'completed',
       })
 
-    // Update user profile - get current scans first
-    const { data: currentProfile } = await admin
-      .from('profiles')
-      .select('scans')
-      .eq('id', userId)
-      .single()
+    // Update user profile
+    const planExpiresAt = planId === 'lifetime' ? null : (
+      planId === 'pro' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null
+    )
 
-    const newScanTotal = (currentProfile?.scans ?? 0) + scansToAdd
+    const newScans = planScans === -1 ? 999999 : planScans // -1 = unlimited
 
     await admin
       .from('profiles')
       .update({
-        scans: newScanTotal,
         plan: planId,
+        scans: newScans,
+        plan_expires_at: planExpiresAt,
         updated_at: new Date().toISOString(),
       })
       .eq('id', userId)
 
+    // ─── Referral Purchase Reward ─────────────────────────────────────────────
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('referred_by')
+      .eq('id', userId)
+      .single()
+
+    if (profile?.referred_by) {
+      // Find referrer
+      const { data: referrer } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('referral_code', profile.referred_by)
+        .single()
+
+      if (referrer) {
+        // Award +3 scans to referrer
+        await admin.rpc('add_scans', { p_user_id: referrer.id, p_amount: 3, p_action: 'referral_purchase' })
+
+        // Insert referral event
+        await admin
+          .from('referral_events')
+          .insert({
+            referrer_id: referrer.id,
+            referred_id: userId,
+            event_type: 'purchase',
+            scans_awarded: 3,
+          })
+      }
+    }
+
+    // ─── Analytics ───────────────────────────────────────────────────────────
+    track('payment_completed', { plan: planId, amount: planPrice })
+
     return NextResponse.json({
       success: true,
       data: {
-        scansAdded: scansToAdd,
-        totalScans: newScanTotal,
-        planId,
+        plan: planId,
+        scans: planScans,
         paymentId: razorpay_payment_id,
       },
       message: 'Payment verified successfully',

@@ -146,6 +146,31 @@ module.exports = {
         'accent-gradient': 'linear-gradient(135deg, #0070f3 0%, #0051a8 100%)',
         'dark-gradient': 'linear-gradient(180deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 100%)',
       },
+      // CraftlyCV Design System
+      colors: {
+        craft: {
+          accent: '#6366f1',        // indigo-500 primary
+          success: '#10b981',       // emerald-500
+          warning: '#f59e0b',       // amber-500
+          danger: '#ef4444',        // red-500
+          surface: {
+            DEFAULT: '#18181b',     // zinc-900
+            hover: '#27272a',       // zinc-800
+            border: '#3f3f46',      // zinc-700
+          },
+        },
+        text: {
+          primary: '#f4f4f5',       // zinc-100
+          secondary: '#a1a1aa',     // zinc-400
+          tertiary: '#52525b',      // zinc-600
+        },
+      },
+      borderRadius: {
+        sm: '6px',
+        md: '8px',
+        lg: '12px',
+        xl: '16px',
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

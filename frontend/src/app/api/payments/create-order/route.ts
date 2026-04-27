@@ -1,90 +1,96 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import Razorpay from 'razorpay'
 import { PLANS } from '@/lib/plans'
 
-// Server-side plan prices (INR paisa) - STRICT mapping, no custom amounts
-const PLAN_PRICES: Record<string, number> = {
-  career_launch: 4900,  // ₹49 one-time
-  niche_pro: 7900,     // ₹79 one-time
-  concierge: 14900,    // ₹149 one-time
-}
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || '',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || '',
+})
 
-// Scan bonuses per plan
-const PLAN_SCANS: Record<string, number> = {
-  career_launch: 50,
-  niche_pro: 100,
-  concierge: 200,
+export async function GET() {
+  // Return available plans without auth
+  const plans = PLANS.map(plan => ({
+    id: plan.id,
+    name: plan.name,
+    price: plan.price,
+    priceLabel: plan.priceLabel,
+    badge: plan.badge,
+    features: plan.features,
+  }))
+
+  return NextResponse.json({ plans })
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
-    const keySecret = process.env.RAZORPAY_KEY_SECRET
+    // Require auth
+    const supabase = createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (!keyId || !keySecret) {
-      return NextResponse.json({
-        success: false,
-        error: 'PAYMENT_NOT_CONFIGURED',
-        message: 'Payment system is not configured. Please contact support.'
-      }, { status: 503 })
+    if (authError || !user) {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      )
     }
 
     const body = await request.json()
-    const { planId, userId } = body
+    const { planId } = body
 
-    if (!userId) {
-      return NextResponse.json({
-        success: false,
-        error: 'USER_REQUIRED',
-        message: 'User ID is required'
-      }, { status: 400 })
+    // Validate planId
+    const plan = PLANS.find(p => p.id === planId)
+    if (!plan) {
+      return NextResponse.json(
+        { message: 'Invalid plan selected' },
+        { status: 400 }
+      )
     }
 
-    // ─── PLAN VALIDATION (MANDATORY) ──────────────────────────────────────────
-    if (!planId || !PLAN_PRICES[planId]) {
-      return NextResponse.json({
-        success: false,
-        error: 'INVALID_PLAN',
-        message: 'Please select a valid plan'
-      }, { status: 400 })
+    if (plan.price === 0) {
+      return NextResponse.json(
+        { message: 'Cannot create order for free plan' },
+        { status: 400 }
+      )
     }
 
-    // Server-side price lookup - NEVER trust client amount
-    const finalAmount = PLAN_PRICES[planId]
-    const scansIncluded = PLAN_SCANS[planId]
-
-    const razorpay = new Razorpay({
-      key_id: keyId,
-      key_secret: keySecret,
-    })
-
-    const order = await razorpay.orders.create({
-      amount: finalAmount,
+    // Create Razorpay order
+    const razorpayOrder = await razorpay.orders.create({
+      amount: plan.price * 100, // Razorpay uses paise (smallest currency unit)
       currency: 'INR',
-      receipt: `craftly_${planId}_${userId.slice(0, 8)}_${Date.now()}`.slice(0, 50),
+      receipt: `plan_${plan.id}_${user.id}_${Date.now()}`,
       notes: {
-        userId,
-        planId,
-        scans: String(scansIncluded),
+        planId: plan.id,
+        userId: user.id,
       },
     })
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        orderId: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        razorpayKey: keyId,
-      },
-    })
+    // Store in payment_transactions table (if table exists)
+    try {
+      await supabase.from('payment_transactions').insert({
+        user_id: user.id,
+        razorpay_order_id: razorpayOrder.id,
+        amount: plan.price,
+        currency: 'INR',
+        plan_id: plan.id,
+        status: 'pending',
+      })
+    } catch (dbError) {
+      console.error('Failed to store transaction:', dbError)
+      // Continue anyway - we'll verify payment on callback
+    }
 
-  } catch (error: any) {
-    console.error('[/api/payments/create-order]', error?.message || error)
     return NextResponse.json({
-      success: false,
-      error: 'ORDER_FAILED',
-      message: 'Failed to create order. Please try again.'
-    }, { status: 500 })
+      orderId: razorpayOrder.id,
+      amount: plan.price * 100,
+      currency: 'INR',
+      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+    })
+  } catch (error) {
+    console.error('Create order error:', error)
+    return NextResponse.json(
+      { message: 'Failed to create order. Please try again.' },
+      { status: 500 }
+    )
   }
 }

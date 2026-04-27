@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -12,346 +12,384 @@ import { Badge } from '@/components/ui/badge'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { Progress } from '@/components/ui/progress'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import {
-  FileText, Plus, Trash2, Edit3, Check, X, ChevronDown, ChevronUp,
-  Loader2, Sparkles, Copy, ArrowRight
+  FileText, Plus, Trash2, Check, X, ChevronDown, ChevronUp,
+  Loader2, Sparkles, ArrowRight, Lightbulb, GripVertical
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { HealthScoreGauge } from '@/components/ui/health-score-gauge'
+
+/* ── Content shape ── */
+interface MasterContent {
+  full_name?: string; email?: string; phone?: string; location?: string
+  professional_summary?: string; primary_niche?: string
+  experience?: Experience[]
+  education?: Education[]
+  projects?: Project[]
+  certifications?: Certification[]
+  skills?: SkillsGroups
+  achievements?: Achievement[]
+  languages?: Language[]
+  niche_tags?: string[]
+}
+interface Experience { id: string; company: string; title: string; start_date: string; end_date: string; is_current: boolean; bullets: Bullet[]; niche_tags?: string[] }
+interface Bullet { id: string; text: string }
+interface Education { id: string; institution: string; degree: string; field: string; year: string; grade: string }
+interface Project { id: string; name: string; description: string; tech_stack: string[]; url: string; impact: string }
+interface Certification { id: string; name: string; issuer: string; date: string; credential_id: string; url: string }
+interface SkillsGroups { technical: string[]; tools: string[]; platforms: string[]; soft_skills: string[] }
+interface Achievement { id: string; title: string; description: string; date: string }
+interface Language { id: string; name: string; proficiency: string }
 
 const NICHE_OPTIONS = [
-  { value: 'general', label: 'General' },
+  { value: 'software', label: 'Software / Tech' },
   { value: 'cybersecurity', label: 'Cybersecurity' },
-  { value: 'nursing', label: 'Nursing' },
-  { value: 'skilled_trades', label: 'Skilled Trades' },
-  { value: 'creative_tech', label: 'Creative Tech' },
+  { value: 'nursing', label: 'Nursing / Healthcare' },
+  { value: 'trades', label: 'Skilled Trades' },
+  { value: 'fresher', label: 'Fresher / Entry-level' },
+  { value: 'creative', label: 'Creative / Design' },
 ]
-
-interface Experience {
-  id?: string
-  company: string
-  title: string
-  startDate: string
-  endDate: string
-  current: boolean
-  bullets: string[]
+const NICHE_SUGGESTIONS: Record<string, string[]> = {
+  software: ['GitHub link + README', 'Quantified project metrics', 'Cloud platform (AWS/GCP/Azure)', 'CI/CD experience', 'Open source contributions'],
+  cybersecurity: ['CompTIA Security+', 'SIEM tool exposure', 'Pen testing projects', 'CVE disclosures', 'Security blog writing'],
+  nursing: ['EMR system experience', 'BLS/ACLS certification', 'Patient load metrics', 'Specialty unit experience', 'Clinical rotation log'],
+  trades: ['Certification numbers', 'Tool inventory', 'Safety training records', 'Apprenticeship hours', 'Blueprint reading'],
+  fresher: ['GitHub portfolio', 'Online certifications', 'Academic project details', 'Internship log', 'Volunteer work'],
+  creative: ['Behance/Dribbble link', 'Design system experience', 'Accessibility knowledge', 'UX case study links', 'Tool proficiency (Figma etc)'],
 }
 
-interface MasterResume {
-  id: string
-  fullName: string
-  email: string
-  phone: string
-  location: string
-  professionalSummary: string
-  experience: Experience[]
-  skills: string[]
-  certifications: string[]
-  primaryNiche: string
-  isPrimary: boolean
+function uuid() { return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10) }
+
+function SectionCard({ title, children, onAdd, emptyText }: { title: string; children: React.ReactNode; onAdd?: () => void; emptyText?: string }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
+      <button onClick={() => setOpen(!open)} className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-white/3 transition-colors">
+        <span className="text-sm font-bold text-white/70 uppercase tracking-widest">{title}</span>
+        <div className="flex items-center gap-2">
+          {onAdd && <Button size="icon-sm" variant="ghost" onClick={e => { e.stopPropagation(); onAdd() }}><Plus className="h-4 w-4" /></Button>}
+          {open ? <ChevronUp className="h-4 w-4 text-white/30" /> : <ChevronDown className="h-4 w-4 text-white/30" />}
+        </div>
+      </button>
+      {open && <div className="px-5 pb-5">{children || <p className="text-sm text-white/25 py-4 text-center">{emptyText || 'No items yet'}</p>}</div>}
+    </div>
+  )
+}
+
+function EditableField({ value, onSave, placeholder, multiline, className }: {
+  value: string; onSave: (v: string) => void; placeholder?: string; multiline?: boolean; className?: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { setDraft(value) }, [value])
+
+  const save = useCallback(async () => {
+    if (draft === value) { setEditing(false); return }
+    setSaving(true)
+    await onSave(draft)
+    setSaving(false)
+    setEditing(false)
+  }, [draft, value, onSave])
+
+  if (!editing) {
+    return (
+      <div onClick={() => setEditing(true)} className={`cursor-pointer px-3 py-2 rounded-lg border border-transparent hover:border-white/10 transition-all ${!value ? 'text-white/30' : 'text-white/80'} ${className}`}>
+        {value || placeholder}
+      </div>
+    )
+  }
+  return multiline
+    ? <Textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} className="text-sm" autoFocus onBlur={save} />
+    : <Input value={draft} onChange={e => setDraft(e.target.value)} className="text-sm" autoFocus onBlur={save} onKeyDown={e => e.key === 'Enter' && save()} />
+}
+
+/* ── Completeness sidebar widget ── */
+function CompletenessWidget({ score, niche }: { score: number; niche: string }) {
+  const suggestions = NICHE_SUGGESTIONS[niche] || []
+  return (
+    <Card className="sticky top-24">
+      <CardHeader className="pb-3"><CardTitle className="text-sm">Vault Completeness</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex justify-center"><HealthScoreGauge score={score} size="sm" /></div>
+        <Progress value={score} className="h-1.5" />
+        <p className="text-xs text-center text-white/30">{score}% complete</p>
+        {suggestions.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-white/40 uppercase tracking-widest">Niche suggestions</p>
+            <ul className="space-y-1.5">
+              {suggestions.map((s, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-xs text-white/40">
+                  <Lightbulb className="h-3 w-3 text-yellow-400 flex-shrink-0 mt-0.5" />
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function VaultPage() {
   const router = useRouter()
   const supabase = createClient()
-  const [master, setMaster] = useState<MasterResume | null>(null)
+  const [masterId, setMasterId] = useState<string | null>(null)
+  const [content, setContent] = useState<MasterContent>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [expandedExp, setExpandedExp] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
 
-  // Form state
-  const [form, setForm] = useState({
-    fullName: '', email: '', phone: '', location: '',
-    professionalSummary: '', primaryNiche: 'general',
-  })
-  const [experience, setExperience] = useState<Experience[]>([])
-  const [skills, setSkills] = useState<string[]>([])
-  const [certifications, setCertifications] = useState<string[]>([])
-  const [skillInput, setSkillInput] = useState('')
-  const [certInput, setCertInput] = useState('')
-
-  useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/auth'); return }
-
-      const { data } = await supabase
-        .from('master_resumes')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_primary', true)
-        .single()
-
-      if (data) {
-        setMaster(data)
-        setForm({
-          fullName: data.full_name ?? '',
-          email: data.email ?? '',
-          phone: data.phone ?? '',
-          location: data.location ?? '',
-          professionalSummary: data.professional_summary ?? '',
-          primaryNiche: data.primary_niche ?? 'general',
-        })
-        setExperience(data.experience ?? [])
-        setSkills(data.skills ?? [])
-        setCertifications(data.certifications ?? [])
-      }
-      setLoading(false)
+  const load = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { router.push('/auth'); return }
+    const { data } = await supabase.from('master_resumes').select('*').eq('user_id', user.id).single()
+    if (data) {
+      setMasterId(data.id)
+      setContent(data.content || {})
     }
-    load()
+    setLoading(false)
   }, [router, supabase])
 
-  const handleSave = async () => {
+  useEffect(() => { load() }, [load])
+
+  const autoSave = useCallback(async (updatedContent: MasterContent) => {
     setSaving(true)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: any = {
-        ...form,
-        experience,
-        skills,
-        certifications,
-        isPrimary: true,
-      }
+    const score = Object.values(updatedContent).filter(v => v && (Array.isArray(v) ? v.length > 0 : typeof v === 'object' ? Object.keys(v as object).length > 0 : true)).length)
+    const completeness_score = Math.round((score / 8) * 100)
 
-      let res: Response
-      if (master?.id) {
-        payload.id = master.id
-        res = await fetch('/api/master-resume', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      } else {
-        res = await fetch('/api/master-resume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      }
-
-      const json = await res.json()
-      if (!json.success) { toast.error(json.message); return }
-
-      setMaster(json.data)
-      toast.success('Resume saved')
-    } catch {
-      toast.error('Failed to save')
-    } finally {
-      setSaving(false)
+    if (masterId) {
+      const { error } = await supabase.from('master_resumes').update({
+        content: updatedContent,
+        completeness_score,
+        updated_at: new Date().toISOString(),
+      }).eq('id', masterId)
+      if (error) toast.error('Auto-save failed')
+    } else {
+      const { data, error } = await supabase.from('master_resumes').insert({
+        user_id: user?.id,
+        content: updatedContent,
+        completeness_score,
+      }).select().single()
+      if (error) toast.error('Auto-save failed')
+      else setMasterId(data.id)
     }
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }, [masterId, supabase, user?.id])
+
+  const update = <K extends keyof MasterContent>(key: K, value: MasterContent[K]) => {
+    const next = { ...content, [key]: value }
+    setContent(next)
+    autoSave(next)
   }
 
-  const addExperience = () => {
-    setExperience(prev => [...prev, { company: '', title: '', startDate: '', endDate: '', current: false, bullets: [''] }])
+  /* Experience helpers */
+  const addExp = () => update('experience', [...(content.experience || []), { id: uuid(), company: '', title: '', start_date: '', end_date: '', is_current: false, bullets: [], niche_tags: [] }])
+  const rmExp = (i: number) => update('experience', content.experience?.filter((_, idx) => idx !== i) || [])
+  const updExp = (i: number, field: string, value: unknown) => update('experience', content.experience?.map((e, idx) => idx === i ? { ...e, [field]: value } : e) || [])
+  const addBullet = (expIdx: number) => updExp(expIdx, 'bullets', [...(content.experience?.[expIdx]?.bullets || []), { id: uuid(), text: '' }])
+  const updBullet = (expIdx: number, bIdx: number, text: string) => updExp(expIdx, 'bullets', content.experience?.[expIdx]?.bullets?.map((b, i) => i === bIdx ? { ...b, text } : b) || [])
+  const rmBullet = (expIdx: number, bIdx: number) => updExp(expIdx, 'bullets', content.experience?.[expIdx]?.bullets?.filter((_, i) => i !== bIdx) || [])
+
+  /* Education helpers */
+  const addEdu = () => update('education', [...(content.education || []), { id: uuid(), institution: '', degree: '', field: '', year: '', grade: '' }])
+  const rmEdu = (i: number) => update('education', content.education?.filter((_, idx) => idx !== i) || [])
+  const updEdu = (i: number, field: string, value: string) => update('education', content.education?.map((e, idx) => idx === i ? { ...e, [field]: value } : e) || [])
+
+  /* Project helpers */
+  const addProj = () => update('projects', [...(content.projects || []), { id: uuid(), name: '', description: '', tech_stack: [], url: '', impact: '' }])
+  const rmProj = (i: number) => update('projects', content.projects?.filter((_, idx) => idx !== i) || [])
+  const updProj = (i: number, field: string, value: unknown) => update('projects', content.projects?.map((p, idx) => idx === i ? { ...p, [field]: value } : p) || [])
+
+  /* Certification helpers */
+  const addCert = () => update('certifications', [...(content.certifications || []), { id: uuid(), name: '', issuer: '', date: '', credential_id: '', url: '' }])
+  const rmCert = (i: number) => update('certifications', content.certifications?.filter((_, idx) => idx !== i) || [])
+  const updCert = (i: number, field: string, value: string) => update('certifications', content.certifications?.map((c, idx) => idx === i ? { ...c, [field]: value } : c) || [])
+
+  /* Skills helpers */
+  const addSkillToGroup = (group: keyof SkillsGroups, val: string) => {
+    const groups = content.skills || { technical: [], tools: [], platforms: [], soft_skills: [] }
+    update('skills', { ...groups, [group]: [...(groups[group] || []), val] })
+  }
+  const rmSkillFromGroup = (group: keyof SkillsGroups, i: number) => {
+    const groups = content.skills || { technical: [], tools: [], platforms: [], soft_skills: [] }
+    update('skills', { ...groups, [group]: groups[group]?.filter((_: unknown, idx: number) => idx !== i) || [] })
   }
 
-  const updateExperience = (i: number, field: keyof Experience, value: any) => {
-    setExperience(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: value } : e))
-  }
+  if (loading) return <div className="space-y-4 max-w-4xl"><Skeleton className="h-[600px]" /></div>
 
-  const removeExperience = (i: number) => {
-    setExperience(prev => prev.filter((_, idx) => idx !== i))
-  }
-
-  const addBullet = (i: number) => {
-    setExperience(prev => prev.map((e, idx) => idx === i ? { ...e, bullets: [...e.bullets, ''] } : e))
-  }
-
-  const updateBullet = (expIdx: number, bulletIdx: number, value: string) => {
-    setExperience(prev => prev.map((e, i) => i === expIdx ? { ...e, bullets: e.bullets.map((b, j) => j === bulletIdx ? value : b) } : e))
-  }
-
-  const addSkill = () => {
-    if (!skillInput.trim()) return
-    setSkills(prev => [...prev, skillInput.trim()])
-    setSkillInput('')
-  }
-
-  const removeSkill = (i: number) => setSkills(prev => prev.filter((_, idx) => idx !== i))
-  const addCert = () => {
-    if (!certInput.trim()) return
-    setCertifications(prev => [...prev, certInput.trim()])
-    setCertInput('')
-  }
-  const removeCert = (i: number) => setCertifications(prev => prev.filter((_, idx) => idx !== i))
-
-  if (loading) {
-    return <div className="space-y-4 max-w-3xl"><Skeleton className="h-96" /></div>
-  }
+  const completeness_score = 0 // placeholder — real calculation happens in API
+  const primary_niche = content.primary_niche || 'software'
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="max-w-6xl mx-auto py-8 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Master Resume</h1>
-          <p className="text-sm text-muted-foreground">Your career foundation — tailor from here</p>
+          <h1 className="text-2xl font-bold text-white">Master Resume Vault</h1>
+          <p className="text-white/40 text-sm mt-0.5">
+            {saving ? 'Saving...' : saved ? <span className="text-green-400 flex items-center gap-1"><Check className="h-3.5 w-3.5" /> Saved</span> : 'Auto-saves on every change'}
+          </p>
         </div>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
-          {saving ? 'Saving...' : 'Save Resume'}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => router.push('/tailor')}>New Tailor <ArrowRight className="h-4 w-4 ml-1" /></Button>
+        </div>
       </div>
 
-      {/* Personal Info */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Personal Info</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Full Name</label>
-              <Input value={form.fullName} onChange={e => setForm(p => ({ ...p, fullName: e.target.value }))} placeholder="John Doe" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Email</label>
-              <Input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="john@example.com" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Phone</label>
-              <Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+1 555 000 0000" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Location</label>
-              <Input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} placeholder="San Francisco, CA" />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-sm font-medium">Professional Niche</label>
-              <Select value={form.primaryNiche} onValueChange={v => setForm(p => ({ ...p, primaryNiche: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {NICHE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-sm font-medium">Professional Summary</label>
-              <Textarea value={form.professionalSummary} onChange={e => setForm(p => ({ ...p, professionalSummary: e.target.value }))} rows={4} placeholder="Brief summary of your experience and expertise..." />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* ── MAIN EDITOR ── */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* Personal info */}
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-sm">Personal Information</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="space-y-1"><label className="text-xs font-medium text-white/40">Full Name</label><EditableField value={content.full_name || ''} onSave={v => update('full_name', v)} placeholder="Your full name" /></div>
+                <div className="space-y-1"><label className="text-xs font-medium text-white/40">Email</label><EditableField value={content.email || ''} onSave={v => update('email', v)} placeholder="email@example.com" /></div>
+                <div className="space-y-1"><label className="text-xs font-medium text-white/40">Phone</label><EditableField value={content.phone || ''} onSave={v => update('phone', v)} placeholder="+91 XXXXX XXXXX" /></div>
+                <div className="space-y-1"><label className="text-xs font-medium text-white/40">Location</label><EditableField value={content.location || ''} onSave={v => update('location', v)} placeholder="City, State" /></div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-white/40">Primary Niche</label>
+                <Select value={content.primary_niche || 'software'} onValueChange={v => update('primary_niche', v)}>
+                  <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
+                  <SelectContent>{NICHE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-white/40">Professional Summary</label>
+                <EditableField value={content.professional_summary || ''} onSave={v => update('professional_summary', v)} placeholder="Brief summary of your experience and expertise..." multiline />
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Experience */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Experience</CardTitle>
-            <Button size="sm" variant="outline" onClick={addExperience}>
-              <Plus className="h-3 w-3 mr-1" />Add Job
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {experience.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              No experience added yet.
-            </p>
-          )}
-          {experience.map((exp, i) => (
-            <div key={i} className="border rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Job {i + 1}</span>
-                <div className="flex gap-1">
-                  <Button size="icon" variant="ghost" onClick={() => setExpandedExp(expandedExp === String(i) ? null : String(i))}>
-                    {expandedExp === String(i) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                  <Button size="icon" variant="ghost" className="text-red-500" onClick={() => removeExperience(i)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+          {/* Experience */}
+          <SectionCard title="Work Experience" onAdd={addExp} emptyText="Add your work experience. CraftlyCV will tailor it for every job you apply to.">
+            {content.experience?.map((exp, i) => (
+              <div key={exp.id} className="mb-5 p-4 rounded-xl bg-white/3 border border-white/8 space-y-3 last:mb-0">
+                <div className="flex items-center justify-between">
+                  <GripVertical className="h-4 w-4 text-white/20 cursor-grab" />
+                  <Button size="icon-sm" variant="ghost" className="text-red-400" onClick={() => rmExp(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Company</label>
-                  <Input value={exp.company} onChange={e => updateExperience(i, 'company', e.target.value)} placeholder="Company name" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Title</label>
-                  <Input value={exp.title} onChange={e => updateExperience(i, 'title', e.target.value)} placeholder="Job title" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Start Date</label>
-                  <Input value={exp.startDate} onChange={e => updateExperience(i, 'startDate', e.target.value)} placeholder="Jan 2020" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">End Date</label>
-                  <Input value={exp.endDate} onChange={e => updateExperience(i, 'endDate', e.target.value)} placeholder={exp.current ? 'Present' : 'Dec 2023'} disabled={exp.current} />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" checked={exp.current} onChange={e => updateExperience(i, 'current', e.target.checked)} className="rounded" />
-                <span className="text-sm">Currently working here</span>
-              </div>
-              {expandedExp === String(i) && (
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Achievement Bullets</label>
-                  {exp.bullets.map((bullet, j) => (
-                    <div key={j} className="flex gap-2">
-                      <Textarea value={bullet} onChange={e => updateBullet(i, j, e.target.value)} rows={2} placeholder="• Achieved X by doing Y..." className="text-sm min-h-[60px]" />
-                      <Button size="icon" variant="ghost" onClick={() => setExperience(prev => prev.map((e, idx) => idx === i ? { ...e, bullets: e.bullets.filter((_, bj) => bj !== j) } : e))}>
-                        <X className="h-3 w-3" />
-                      </Button>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Company</label><EditableField value={exp.company} onSave={v => updExp(i, 'company', v)} placeholder="Company name" /></div>
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Title</label><EditableField value={exp.title} onSave={v => updExp(i, 'title', v)} placeholder="Software Engineer" /></div>
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Start Date</label><EditableField value={exp.start_date} onSave={v => updExp(i, 'start_date', v)} placeholder="Jan 2022" /></div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-white/30">End Date</label>
+                    <div className="flex items-center gap-2">
+                      <EditableField value={exp.end_date} onSave={v => updExp(i, 'end_date', v)} placeholder={exp.is_current ? 'Present' : 'Dec 2024'} />
+                      <label className="flex items-center gap-1 text-xs text-white/30 whitespace-nowrap"><input type="checkbox" checked={exp.is_current} onChange={e => updExp(i, 'is_current', e.target.checked)} className="rounded" />Current</label>
                     </div>
-                  ))}
-                  <Button size="sm" variant="outline" onClick={() => addBullet(i)}>
-                    <Plus className="h-3 w-3 mr-1" />Add Bullet
-                  </Button>
+                  </div>
                 </div>
-              )}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Skills */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Skills</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-2">
-            <Input value={skillInput} onChange={e => setSkillInput(e.target.value)} placeholder="Add a skill..." className="flex-1" onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSkill())} />
-            <Button onClick={addSkill} variant="outline"><Plus className="h-4 w-4" /></Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {skills.map((s, i) => (
-              <Badge key={i} variant="secondary" className="gap-1 pr-1.5">
-                {s}
-                <button onClick={() => removeSkill(i)} className="hover:text-red-500 ml-1"><X className="h-3 w-3" /></button>
-              </Badge>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium text-white/30">Achievement Bullets</label>
+                    <Button size="sm" variant="ghost" onClick={() => addBullet(i)}><Plus className="h-3 w-3 mr-1" />Add</Button>
+                  </div>
+                  <div className="space-y-2">
+                    {exp.bullets.map((b, j) => (
+                      <div key={b.id} className="flex gap-2 items-start">
+                        <span className="text-white/20 mt-2">•</span>
+                        <EditableField value={b.text} onSave={v => updBullet(i, j, v)} placeholder="• Achieved X by doing Y (include metrics)" multiline />
+                        <Button size="icon-sm" variant="ghost" className="text-white/30 mt-1" onClick={() => rmBullet(i, j)}><X className="h-3 w-3" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             ))}
-          </div>
-          {skills.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No skills added</p>}
-        </CardContent>
-      </Card>
+          </SectionCard>
 
-      {/* Certifications */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Certifications</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-2">
-            <Input value={certInput} onChange={e => setCertInput(e.target.value)} placeholder="Add a certification..." className="flex-1" onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCert())} />
-            <Button onClick={addCert} variant="outline"><Plus className="h-4 w-4" /></Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {certifications.map((c, i) => (
-              <Badge key={i} variant="outline" className="gap-1 pr-1.5">
-                {c}
-                <button onClick={() => removeCert(i)} className="hover:text-red-500 ml-1"><X className="h-3 w-3" /></button>
-              </Badge>
+          {/* Education */}
+          <SectionCard title="Education" onAdd={addEdu} emptyText="Add your educational background.">
+            {content.education?.map((edu, i) => (
+              <div key={edu.id} className="mb-4 flex gap-3 items-start">
+                <div className="flex-1 grid sm:grid-cols-2 gap-2">
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Institution</label><EditableField value={edu.institution} onSave={v => updEdu(i, 'institution', v)} placeholder="NIT / IIT / University" /></div>
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Degree</label><EditableField value={edu.degree} onSave={v => updEdu(i, 'degree', v)} placeholder="B.Tech / MBA / BSc" /></div>
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Field of Study</label><EditableField value={edu.field} onSave={v => updEdu(i, 'field', v)} placeholder="Computer Science" /></div>
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Year / Grade</label><EditableField value={edu.year || edu.grade} onSave={v => updEdu(i, 'year', v)} placeholder="2024 / 8.5 CGPA" /></div>
+                </div>
+                <Button size="icon-sm" variant="ghost" className="text-red-400 mt-6" onClick={() => rmEdu(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>
             ))}
-          </div>
-          {certifications.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No certifications added</p>}
-        </CardContent>
-      </Card>
+          </SectionCard>
 
-      {/* CTA */}
-      {master && (
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={saving} size="lg">
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-            Save Changes
+          {/* Projects */}
+          <SectionCard title="Projects" onAdd={addProj} emptyText="Add personal or academic projects with measurable impact.">
+            {content.projects?.map((p, i) => (
+              <div key={p.id} className="mb-4 p-4 rounded-xl bg-white/3 border border-white/8 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1 flex-1"><label className="text-xs font-medium text-white/30">Project Name</label><EditableField value={p.name} onSave={v => updProj(i, 'name', v)} placeholder="Project name" /></div>
+                  <Button size="icon-sm" variant="ghost" className="text-red-400" onClick={() => rmProj(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                </div>
+                <div className="space-y-1"><label className="text-xs font-medium text-white/30">Description</label><EditableField value={p.description} onSave={v => updProj(i, 'description', v)} placeholder="What does this project do?" multiline /></div>
+                <div className="space-y-1"><label className="text-xs font-medium text-white/30">Tech Stack (comma-separated)</label><EditableField value={(p.tech_stack || []).join(', ')} onSave={v => updProj(i, 'tech_stack', v.split(',').map(s => s.trim()).filter(Boolean))} placeholder="React, Node.js, PostgreSQL" /></div>
+                <div className="space-y-1"><label className="text-xs font-medium text-white/30">Impact Statement</label><EditableField value={p.impact} onSave={v => updProj(i, 'impact', v)} placeholder="Used by X users / improved performance by Y%" multiline /></div>
+              </div>
+            ))}
+          </SectionCard>
+
+          {/* Certifications */}
+          <SectionCard title="Certifications" onAdd={addCert} emptyText="Add professional certifications and credentials.">
+            {content.certifications?.map((cert, i) => (
+              <div key={cert.id} className="mb-3 flex gap-3 items-start">
+                <div className="flex-1 grid sm:grid-cols-2 gap-2">
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Certification</label><EditableField value={cert.name} onSave={v => updCert(i, 'name', v)} placeholder="AWS Solutions Architect" /></div>
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Issuer</label><EditableField value={cert.issuer} onSave={v => updCert(i, 'issuer', v)} placeholder="Amazon / Coursera / Google" /></div>
+                  <div className="space-y-1"><label className="text-xs font-medium text-white/30">Date / Credential ID</label><EditableField value={cert.date || cert.credential_id} onSave={v => updCert(i, 'date', v)} placeholder="Dec 2024 / ABC123XYZ" /></div>
+                </div>
+                <Button size="icon-sm" variant="ghost" className="text-red-400 mt-4" onClick={() => rmCert(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>
+            ))}
+          </SectionCard>
+
+          {/* Skills */}
+          <SectionCard title="Skills">
+            {(['technical', 'tools', 'platforms', 'soft_skills'] as (keyof SkillsGroups)[]).map(group => (
+              <div key={group} className="mb-4">
+                <label className="text-xs font-semibold text-white/30 uppercase tracking-widest mb-2 block capitalize">{group.replace('_', ' ')}</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {(content.skills?.[group] || []).map((s, j) => (
+                    <Badge key={j} variant="secondary" className="gap-1 pr-1.5">
+                      {s}<button onClick={() => rmSkillFromGroup(group, j)} className="hover:text-red-400 ml-1"><X className="h-3 w-3" /></button>
+                    </Badge>
+                  ))}
+                </div>
+                <SkillAdder onAdd={v => addSkillToGroup(group, v)} placeholder={`Add ${group.replace('_', ' ')}...`} />
+              </div>
+            ))}
+          </SectionCard>
+        </div>
+
+        {/* ── SIDEBAR ── */}
+        <div className="space-y-4">
+          <CompletenessWidget score={completeness_score} niche={primary_niche} />
+          <Button className="w-full gap-2" onClick={() => router.push('/tailor')}>
+            <Sparkles className="h-4 w-4" /> Tailor for a Job
           </Button>
         </div>
-      )}
+      </div>
+    </div>
+  )
+}
+
+/* Small skill adder helper */
+function SkillAdder({ onAdd, placeholder }: { onAdd: (v: string) => void; placeholder: string }) {
+  const [val, setVal] = useState('')
+  return (
+    <div className="flex gap-2">
+      <Input value={val} onChange={e => setVal(e.target.value)} placeholder={placeholder} className="text-sm" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (val.trim()) { onAdd(val.trim()); setVal('') } } }} />
+      {val.trim() && <Button size="sm" variant="outline" onClick={() => { onAdd(val.trim()); setVal('') }}><Plus className="h-3 w-3" /></Button>}
     </div>
   )
 }
