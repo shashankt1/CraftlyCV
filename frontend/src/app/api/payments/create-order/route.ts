@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import Razorpay from 'razorpay'
 import { PLANS } from '@/lib/plans'
 
-// Server-side plan prices (INR paisa) - must match frontend
+// Server-side plan prices (INR paisa) - STRICT mapping, no custom amounts
 const PLAN_PRICES: Record<string, number> = {
-  starter_monthly: 4900,  // ₹49
-  starter_yearly: 49900,  // ₹499
-  pro_monthly: 14900,     // ₹149
-  pro_yearly: 149900,     // ₹1499
-  lifetime: 39900,        // ₹399 one-time
-  enterprise_monthly: 359900, // ₹3599
-  enterprise_yearly: 3599000, // ₹35990
+  career_launch: 4900,  // ₹49 one-time
+  niche_pro: 7900,     // ₹79 one-time
+  concierge: 14900,    // ₹149 one-time
+}
+
+// Scan bonuses per plan
+const PLAN_SCANS: Record<string, number> = {
+  career_launch: 50,
+  niche_pro: 100,
+  concierge: 200,
 }
 
 export async function POST(request: NextRequest) {
@@ -19,43 +22,36 @@ export async function POST(request: NextRequest) {
     const keySecret = process.env.RAZORPAY_KEY_SECRET
 
     if (!keyId || !keySecret) {
-      return NextResponse.json({ success: false, error: 'Razorpay not configured' }, { status: 500 })
+      return NextResponse.json({
+        success: false,
+        error: 'PAYMENT_NOT_CONFIGURED',
+        message: 'Payment system is not configured. Please contact support.'
+      }, { status: 503 })
     }
 
     const body = await request.json()
-    const { amount, userId, planId } = body
+    const { planId, userId } = body
 
     if (!userId) {
-      return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
+      return NextResponse.json({
+        success: false,
+        error: 'USER_REQUIRED',
+        message: 'User ID is required'
+      }, { status: 400 })
     }
 
-    // ─── SERVER-SIDE PRICE VALIDATION ─────────────────────────────────────────
-    let finalAmount: number
-
-    if (planId && PLAN_PRICES[planId] !== undefined) {
-      // Validate amount matches expected price for plan
-      finalAmount = PLAN_PRICES[planId]
-
-      // If client sent a different amount, reject it
-      if (amount && Math.abs(Number(amount) - finalAmount) > 1) {
-        console.error(`Price mismatch for plan ${planId}: expected ${finalAmount}, got ${amount}`)
-        return NextResponse.json({
-          success: false,
-          error: 'Price validation failed. Please refresh and try again.',
-        }, { status: 400 })
-      }
-    } else if (amount) {
-      // Custom amount - validate minimum
-      finalAmount = Number(amount)
-      if (finalAmount < 100) {
-        return NextResponse.json({ success: false, error: 'Minimum amount is ₹1' }, { status: 400 })
-      }
-      if (finalAmount > 10000000) { // ₹10L max
-        return NextResponse.json({ success: false, error: 'Amount exceeds maximum' }, { status: 400 })
-      }
-    } else {
-      return NextResponse.json({ success: false, error: 'Amount or planId required' }, { status: 400 })
+    // ─── PLAN VALIDATION (MANDATORY) ──────────────────────────────────────────
+    if (!planId || !PLAN_PRICES[planId]) {
+      return NextResponse.json({
+        success: false,
+        error: 'INVALID_PLAN',
+        message: 'Please select a valid plan'
+      }, { status: 400 })
     }
+
+    // Server-side price lookup - NEVER trust client amount
+    const finalAmount = PLAN_PRICES[planId]
+    const scansIncluded = PLAN_SCANS[planId]
 
     const razorpay = new Razorpay({
       key_id: keyId,
@@ -65,26 +61,30 @@ export async function POST(request: NextRequest) {
     const order = await razorpay.orders.create({
       amount: finalAmount,
       currency: 'INR',
-      receipt: `rcpt_${userId}_${Date.now()}`.substring(0, 40),
+      receipt: `craftly_${planId}_${userId.slice(0, 8)}_${Date.now()}`.slice(0, 50),
       notes: {
         userId,
-        planId: planId || 'custom',
+        planId,
+        scans: String(scansIncluded),
       },
     })
 
     return NextResponse.json({
       success: true,
-      orderId: order.id,
-      amount: order.amount,
-      currency: order.currency,
-      keyId: keyId,
+      data: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        razorpayKey: keyId,
+      },
     })
 
-  } catch (error) {
-    console.error('Razorpay create-order error:', error)
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to create order' },
-      { status: 500 }
-    )
+  } catch (error: any) {
+    console.error('[/api/payments/create-order]', error?.message || error)
+    return NextResponse.json({
+      success: false,
+      error: 'ORDER_FAILED',
+      message: 'Failed to create order. Please try again.'
+    }, { status: 500 })
   }
 }

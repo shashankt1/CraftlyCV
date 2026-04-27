@@ -1,78 +1,239 @@
 /**
- * CraftlyCV AI Router — Single Brain System
- * All AI logic flows through here. No AI logic outside this file.
+ * CraftlyCV AI Router — Single Unified Brain
+ * Production-Ready AI Engine
  *
- * Modes:
- * - resume  → ATS resume generator
- * - interview → FAANG recruiter simulation (multi-turn)
- * - career  → income + job strategy advisor
- * - convert → multilingual resume transformer
- * - general → structured assistant
+ * MODES:
+ * - resume  → ATS-optimized JSON resume
+ * - match   → match_score, missing_keywords, ats_risk, proof_gaps
+ * - interview → question + STAR feedback + next_question
+ * - risk    → risk_score, automatable_tasks, safe_tasks, missing_skills, trending_skills, 30_day_plan, resume_improvements
  *
- * Rules:
- * - strict structured output
- * - no hallucination
- * - adaptive context memory
- * - interview is dynamic (not static questions)
+ * RULES:
+ * - STRICT JSON ONLY output
+ * - No text outside JSON
+ * - No null/empty fields
+ * - 20s timeout, 2 retries, fallback error
+ * - Niche-aware prompts
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { NICHE_PACKS, type NichePack } from './niches'
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || ''
 
-let genAIInstance: GoogleGenerativeAI | null = null
+const TIMEOUT_MS = 20_000
+const MAX_RETRIES = 2
+
+let _genAI: GoogleGenerativeAI | null = null
 
 function getGenAI(): GoogleGenerativeAI {
-  if (!genAIInstance) {
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY is not configured')
-    }
-    genAIInstance = new GoogleGenerativeAI(GEMINI_API_KEY)
+  if (!_genAI) {
+    if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured')
+    _genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
   }
-  return genAIInstance
+  return _genAI
 }
 
-// ─── Timeout Wrapper ────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-// ─── Timeout + Retry Wrapper ─────────────────────────────────────────────────
+export type AIMode = 'resume' | 'match' | 'interview' | 'risk'
 
-const AI_TIMEOUT_MS = 20000 // 20 seconds
-const AI_MAX_RETRIES = 2
+export interface AIResumeRequest {
+  mode: 'resume'
+  userId: string
+  resume: {
+    fullName: string
+    email?: string
+    phone?: string
+    location?: string
+    summary?: string
+    experience: Array<{
+      company: string
+      title: string
+      startDate: string
+      endDate?: string
+      current: boolean
+      bullets: string[]
+    }>
+    education: Array<{
+      institution: string
+      degree: string
+      field?: string
+      graduationDate?: string
+    }>
+    skills: string[]
+    certifications?: string[]
+  }
+  jobDescription: string
+  niche: string
+  targetRole?: string
+}
+
+export interface AIMatchRequest {
+  mode: 'match'
+  userId: string
+  resume: {
+    summary?: string
+    experience: Array<{ title: string; company: string; bullets: string[] }>
+    skills: string[]
+    certifications?: string[]
+  }
+  jobDescription: string
+  niche: string
+}
+
+export interface AIInterviewRequest {
+  mode: 'interview'
+  userId: string
+  resume: {
+    fullName: string
+    summary?: string
+    experience: Array<{ title: string; company: string; bullets: string[] }>
+    skills: string[]
+  }
+  jobDescription: string
+  niche: string
+  action: 'start' | 'answer'
+  answer?: string
+  history?: Array<{ role: 'interviewer' | 'candidate'; content: string }>
+}
+
+export type AIRequest = AIResumeRequest | AIMatchRequest | AIInterviewRequest
+
+// ─── Response Types ────────────────────────────────────────────────────────────
+
+export interface AIResumeResponse {
+  tailoredResume: {
+    fullName: string
+    email: string
+    phone: string
+    location: string
+    summary: string
+    experience: Array<{
+      company: string
+      title: string
+      startDate: string
+      endDate: string
+      current: boolean
+      bullets: string[]
+    }>
+    education: Array<{
+      institution: string
+      degree: string
+      field: string
+      graduationDate: string
+    }>
+    skills: string[]
+    certifications: string[]
+  }
+  matchScore: number
+  atsRiskScore: number
+  missingKeywords: string[]
+  improvements: string[]
+  authenticityWarnings: string[]
+}
+
+export interface AIMatchResponse {
+  overallScore: number
+  keywordMatchScore: number
+  skillsMatchScore: number
+  experienceMatchScore: number
+  matchedKeywords: string[]
+  missingKeywords: string[]
+  skillGaps: string[]
+  proofGaps: string[]
+  atsRiskScore: number
+  atsWarnings: string[]
+  improvementSuggestions: string[]
+  sectionRelevance: Array<{
+    section: string
+    score: number
+    note: string
+  }>
+}
+
+export interface AIInterviewResponse {
+  question: string
+  questionCategory: string
+  feedback?: string
+  score?: number
+  starFeedback?: {
+    situation: string
+    task: string
+    action: string
+    result: string
+    scores: { situation: number; task: number; action: number; result: number }
+    overall: number
+    improvement: string
+  }
+  nextQuestion?: string
+  overallScore?: number
+  isComplete?: boolean
+}
+
+export interface AIErrorResponse {
+  error: string
+  message: string
+}
+
+export type AIResponse =
+  | { success: true; data: AIResumeResponse }
+  | { success: true; data: AIMatchResponse }
+  | { success: true; data: AIInterviewResponse }
+  | { success: false; data: AIErrorResponse }
+
+// ─── Fallback Error ────────────────────────────────────────────────────────────
+
+const FALLBACK_ERROR: AIErrorResponse = {
+  error: 'AI_TEMPORARY_FAILURE',
+  message: 'Try again',
+}
+
+// ─── Timeout + Retry Wrapper ───────────────────────────────────────────────────
 
 async function generateWithRetry(
-  model: any,
   prompt: string,
   options: { temperature?: number; maxOutputTokens?: number } = {}
 ): Promise<string> {
   let lastError: Error | null = null
 
-  for (let attempt = 0; attempt <= AI_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS)
+    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
     try {
+      const genAI = getGenAI()
+      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+
       const result = await model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: options.temperature ?? 0.7,
-          maxOutputTokens: options.maxOutputTokens ?? 2048,
+          temperature: options.temperature ?? 0.3,
+          maxOutputTokens: options.maxOutputTokens ?? 8192,
+          responseMimeType: 'application/json',
         },
-        signal: controller.signal,
       })
-      clearTimeout(timeout)
-      return result.response.text()
-    } catch (error: any) {
-      clearTimeout(timeout)
-      lastError = error
 
-      // Don't retry on abort (timeout) - try again
-      // Don't retry on parse errors
-      if (attempt < AI_MAX_RETRIES) {
-        await new Promise(r => setTimeout(r, 500 * (attempt + 1))) // Exponential backoff
+      clearTimeout(timeout)
+      const text = result.response.text().trim()
+      if (!text) throw new Error('Empty response')
+      return text
+    } catch (err: any) {
+      clearTimeout(timeout)
+      lastError = err
+
+      if (err.name === 'AbortError' || err.name === 'CanceledError') {
+        if (attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+          continue
+        }
+      }
+
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
         continue
       }
     } finally {
@@ -80,909 +241,334 @@ async function generateWithRetry(
     }
   }
 
-  throw lastError || new Error('AI generation failed after retries')
+  throw lastError ?? new Error('AI generation failed')
 }
 
-// Fallback responses for when AI is unavailable
-const FALLBACK_RESPONSES: Record<string, any> = {
-  resume: {
-    score: 60,
-    detectedField: 'Technology',
-    experienceYears: 3,
-    strengthStatement: 'Solid technical foundation with growth potential.',
-    realWorldContext: 'Your resume shows adequate qualifications. Focus on quantifiable achievements to stand out.',
-    summary: 'Your resume is functional but has room for improvement in showcasing measurable impact.',
-    projectedScore: 75,
-    scorePercentile: 55,
-    keywordMatches: ['JavaScript', 'React', 'Node.js'],
-    missingKeywords: ['AWS', 'Docker', 'Kubernetes'],
-    strengths: ['Clean code structure', 'Relevant tech stack', 'Good communication'],
-    improvements: ['Add quantifiable metrics to achievements', 'Include more relevant keywords'],
-    opportunities: [
-      { icon: '📊', title: 'Quantify Impact', whatsHappening: 'Achievements lack numbers', theFix: 'Add % improvements, revenue impact, or efficiency gains', impact: 12, proOnly: false },
-      { icon: '🔑', title: 'Keyword Gap', whatsHappening: 'Missing ATS keywords', theFix: 'Add skills from target job descriptions', impact: 10, proOnly: false },
-    ],
-  },
-  interview: {
-    feedback: 'This is a good start. Try to be more specific with examples and metrics.',
-    score: 6,
-    nextQuestion: 'Can you describe a specific project where you delivered measurable results?',
-  },
-  career: {
-    currentLevel: 'Mid',
-    summary: 'You are at a mid-career stage with solid experience.',
-    jobRoles: [
-      { title: 'Senior Engineer', matchPercent: 80, reason: 'Natural progression', salaryRange: '₹15-25 LPA' },
-      { title: 'Tech Lead', matchPercent: 72, reason: 'Leadership potential', salaryRange: '₹20-30 LPA' },
-    ],
-  },
-  convert: {
-    convertedResume: 'Conversion service temporarily unavailable. Please try again later.',
-  },
-  general: {
-    response: 'I apologize, but I am temporarily unavailable. Please try again in a moment.',
-  },
+// ─── JSON Parser (Strict) ───────────────────────────────────────────────────────
+
+function parseJSON<T>(text: string): T {
+  const cleaned = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .replace(/^[^{[\s]*/, '')
+    .replace(/[^}\]]\s*$/, '')
+    .trim()
+
+  const match = cleaned.match(/\{[\s\S]*\}/) ?? cleaned.match(/\[[\s\S]*\]/)
+  if (!match) throw new Error('No JSON found in response')
+  return JSON.parse(match[0])
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type AIMode = 'resume' | 'interview' | 'career' | 'convert' | 'general'
-
-export interface AIRequest {
-  mode: AIMode
-  userId: string
-  // Resume mode
-  resumeText?: string
-  jobDescription?: string
-  improvements?: string[]
-  // Interview mode
-  conversationHistory?: Array<{ role: string; content: string }>
-  interviewAction?: 'start' | 'continue' | 'finish'
-  jobTitle?: string
-  // Career mode
-  skills?: string[]
-  experienceYears?: number
-  timePerWeek?: number
-  country?: string
-  // Convert mode
-  sourceLanguage?: string
-  targetLanguage?: string
-  // General
-  query?: string
-  context?: Record<string, any>
-}
-
-export interface AIResponse {
-  success: boolean
-  data?: any
-  error?: string
-}
-
-// ─── Prompt Templates ─────────────────────────────────────────────────────────
-
-// RESUME MODE
-const RESUME_ANALYSIS_PROMPT = `You are the world's toughest and most thorough ATS resume analyzer.
-Analyze every single aspect of this resume with the highest standards used by top companies like Google, Amazon, Microsoft, and McKinsey.
-
-Be ruthlessly thorough. Check everything:
-- Keyword density and ATS parsing
-- Action verbs and impact language
-- Quantifiable achievements (numbers, %, $)
-- Format and structure
-- Skills alignment
-- Grammar and clarity
-- Section completeness
-- Industry-specific requirements
-- Seniority signals
-- Recruiter 6-second scan test
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "score": [integer 0-100, be honest - most resumes score 45-75],
-  "detectedField": "[primary career field]",
-  "experienceYears": [estimated years as integer],
-  "strengthStatement": "[one sentence validating their background]",
-  "realWorldContext": "[2-3 sentences on what this score means in job market]",
-  "summary": "[2 sentence overall assessment]",
-  "projectedScore": [score + 18-28 after fixes, max 97],
-  "scorePercentile": [what percentile they're in],
-  "keywordMatches": ["keyword1", "keyword2", ...],
-  "missingKeywords": ["gap1", "gap2", ...],
-  "strengths": ["specific strength 1", "specific strength 2", ...],
-  "improvements": ["specific improvement 1", "specific improvement 2", ...],
-  "opportunities": [
-    {
-      "icon": "emoji",
-      "title": "Opportunity title",
-      "whatsHappening": "specific issue",
-      "theFix": "[specific fix]",
-      "impact": [10-15],
-      "proOnly": false
+function cleanObject(obj: any): any {
+  if (obj === null || obj === undefined) return undefined
+  if (typeof obj === 'string') {
+    const trimmed = obj.trim()
+    return trimmed === '' ? undefined : trimmed
+  }
+  if (Array.isArray(obj)) {
+    const cleaned = obj.map(cleanObject).filter((v: any) => v !== undefined)
+    return cleaned.length > 0 ? cleaned : undefined
+  }
+  if (typeof obj === 'object') {
+    const result: any = {}
+    for (const [key, value] of Object.entries(obj)) {
+      const cleaned = cleanObject(value)
+      if (cleaned !== undefined) result[key] = cleaned
     }
-  ]
+    return Object.keys(result).length > 0 ? result : undefined
+  }
+  return obj
 }
 
-RESUME TEXT:
-{resumeText}`
+// ─── Niche Helper ─────────────────────────────────────────────────────────────
 
-const RESUME_TAILOR_PROMPT = `You are an expert ATS resume writer. Rewrite this resume to PERFECTLY match the job description.
+function getNicheContext(niche: string): NichePack {
+  return NICHE_PACKS[niche] ?? NICHE_PACKS.general
+}
+
+// ─── Prompt Builders ───────────────────────────────────────────────────────────
+
+function buildResumePrompt(req: AIResumeRequest): string {
+  const niche = getNicheContext(req.niche)
+  const nicheSkillCategories = niche.skills.map((s: any) => `${s.category}: ${s.skills.slice(0, 10).join(', ')}`).join('\n')
+  const achievementPrompts = niche.achievementPrompts.map((a: any) => `  ${a.category}:\n    ${a.prompts.map((p: string) => `    - ${p}`).join('\n')}`).join('\n')
+
+  return `You are CraftlyCV's ATS Resume Tailoring Engine. You MUST output STRICT JSON ONLY.
+
+TASK: Rewrite this resume to perfectly match the job description while maintaining authenticity.
+
+NICHE CONTEXT: ${niche.name}
+TARGET ROLE: ${req.targetRole ?? 'General Professional'}
+
+SKILL TAXONOMY FOR THIS NICHE:
+${nicheSkillCategories}
+
+ACHIEVEMENT PROMPTS FOR THIS NICHE:
+${achievementPrompts}
 
 ORIGINAL RESUME:
-{resumeText}
+${JSON.stringify(req.resume, null, 2)}
 
 JOB DESCRIPTION:
-{jobDescription}
+${req.jobDescription}
 
 RULES:
-- Mirror keywords and phrases from the job description naturally
-- Keep ALL factual info accurate (names, companies, dates)
-- Use ALL CAPS for section headers
-- Use "- " for every bullet point
-- Add metrics where logical and truthful
-- No markdown, no JSON, no code fences
+1. Output STRICT JSON ONLY — no text before or after
+2. Integrate keywords from job description naturally
+3. Quantify achievements ONLY if verifiable (no fake metrics)
+4. Use action verbs appropriate for ${niche.name}
+5. Reorder skills to match job requirements
+6. Flag any authenticity concerns
+7. Keep ALL factual information (names, dates, companies) accurate
 
-After the resume, on a new line write exactly:
-MATCH_SCORE: [number between 75-98]
-IMPROVEMENTS:
-- [improvement 1]
-- [improvement 2]
-- [improvement 3]`
-
-const RESUME_IMPROVE_PROMPT = `You are an expert resume writer. Rewrite this resume to be more ATS-friendly and impactful.
-
-ORIGINAL RESUME:
-{resumeText}
-
-IMPROVEMENTS TO APPLY:
-{improvements}
-
-STRICT FORMATTING RULES:
-- First line must be the person's full name only
-- Use ALL CAPS for every section header
-- Use "- " to start every bullet point
-- Keep all facts accurate
-- No markdown, no JSON, no code fences
-
-Return ONLY the plain text resume.`
-
-const BUILD_SUMMARY_PROMPT = `You are an expert resume writer. Write a powerful 3-sentence professional summary for this person.
-
-Name: {name}
-Current/Recent Role: {role}
-Companies: {companies}
-Skills: {skills}
-Education: {education}
-
-Rules:
-- Start with their role/expertise
-- Include years of experience if available
-- Mention 2-3 key technologies/skills
-- End with a value statement
-- No buzzwords
-- ATS-optimized
-- Max 60 words
-
-Respond with ONLY the summary text, no quotes, no labels.`
-
-const BUILD_BULLETS_PROMPT = `You are an expert resume writer. Rewrite these job bullets to be ATS-optimized, impact-focused, and quantified.
-
-Company: {company}
-Role: {role}
-Current bullets:
-{bullets}
-
-Rules:
-- Start with strong action verbs (Built, Led, Increased, Reduced, Designed, Deployed, Scaled)
-- Add realistic metrics where logical
-- ATS-friendly
-- Keep under 20 words per bullet
-- If empty, write a strong generic one
-
-Respond ONLY with valid JSON array of strings, same count as input:
-["bullet 1", "bullet 2", "bullet 3"]`
-
-// INTERVIEW MODE
-const INTERVIEW_START_PROMPT = `You are a strict, senior technical recruiter conducting a high-stakes interview for a {role} position.
-
-TONE: Professional, realistic, slightly pressuring. You represent a real company. You will catch lies, inconsistencies, and vague answers. Be conversational but rigorous.
-
-Resume summary:
-{resume}
-
-Instructions:
-1. Start with a brief professional greeting (your name as "Alex from Talent Acquisition")
-2. Ask ONE focused interview question tailored to their experience and the {role} role
-3. The first question should be either:
-   - A behavioral question ("Tell me about a time you...")
-   - Or a role-specific technical question based on their resume
-
-Keep greeting + first question under 80 words total. Start the interview immediately — no preamble.
-Respond ONLY with the greeting + first question as plain text.`
-
-const INTERVIEW_CONTINUE_PROMPT = `You are a strict, senior technical recruiter conducting an interview for a {role} position.
-
-TONE: Serious, realistic, slightly pressuring. Catch vague answers immediately.
-
-Conversation history:
-{history}
-
-Latest candidate answer: "{answer}"
-
-Instructions:
-1. Give 1-2 sentences of DIRECT feedback on their answer (what was strong, what was weak)
-2. Score their answer out of 10 with brief justification
-3. Ask the NEXT interview question (go deeper on the topic, or introduce a new relevant dimension)
-
-CRITICAL:
-- If their answer is vague ("I usually try my best"), call it out directly: "That's vague. Give a specific example..."
-- If they ramble, interrupt them: "I appreciate the detail, but focus on the result..."
-- Push for specifics: "What was the exact impact? Give me a number..."
-
-Respond ONLY with valid JSON:
+OUTPUT FORMAT (STRICT JSON):
 {
-  "feedback": "[1-2 sentence direct feedback]",
-  "score": [integer 1-10],
-  "nextQuestion": "[next interview question, specific and tailored]"
-}`
+  "tailoredResume": {
+    "fullName": "string (keep as-is)",
+    "email": "string",
+    "phone": "string",
+    "location": "string",
+    "summary": "string (2-4 sentences, niche-optimized)",
+    "experience": [{
+      "company": "string",
+      "title": "string",
+      "startDate": "string",
+      "endDate": "string",
+      "current": boolean,
+      "bullets": ["string (metrics-focused, ATS-optimized)"]
+    }],
+    "education": [{
+      "institution": "string",
+      "degree": "string",
+      "field": "string",
+      "graduationDate": "string"
+    }],
+    "skills": ["string (reordered by job relevance)"],
+    "certifications": ["string (if any, from job description)"]
+  },
+  "matchScore": number (0-100, keyword + relevance weighted),
+  "atsRiskScore": number (0-100, lower is safer),
+  "missingKeywords": ["string (important keywords from JD not in resume)"],
+  "improvements": ["string (specific actionable improvements)"],
+  "authenticityWarnings": ["string (any over-claiming flags)"]
+}
 
-const INTERVIEW_STAR_PROMPT = `Analyze this interview answer using the STAR method:
+Respond with STRICT JSON ONLY:`
+}
 
-Answer: "{answer}"
+function buildMatchPrompt(req: AIMatchRequest): string {
+  const niche = getNicheContext(req.niche)
+  const proofGapExamples = niche.achievementPrompts.map((a: any) => `${a.category}: ${a.prompts[0] ?? 'N/A'}`).join('\n')
 
-Provide:
-1. STAR breakdown: Identify the Situation, Task, Action, and Result in their answer
-2. Score each component 1-10
-3. Overall STAR score (0-100)
-4. One specific improvement suggestion
+  return `You are CraftlyCV's JD Match Analyzer. You MUST output STRICT JSON ONLY.
 
-Respond ONLY with valid JSON:
-{
-  "situation": "[what was the context]",
-  "task": "[what was their responsibility]",
-  "action": "[what specifically did they do]",
-  "result": "[what measurable outcome]",
-  "situationScore": [1-10],
-  "taskScore": [1-10],
-  "actionScore": [1-10],
-  "resultScore": [1-10],
-  "overallStarScore": [0-100],
-  "improvement": "[one specific thing they could improve]"
-}`
+TASK: Analyze resume vs job description and return match scores with actionable insights.
 
-const INTERVIEW_FINISH_PROMPT = `You are wrapping up an interview for {role}.
+NICHE: ${niche.name}
+PROOF GAP EXAMPLES FOR THIS NICHE:
+${proofGapExamples}
 
-Conversation:
-{history}
-
-Final answer: "{answer}"
-
-Score this final answer, provide overall feedback, and write a professional closing.
-
-Respond ONLY with valid JSON:
-{
-  "score": [integer 1-10],
-  "feedback": "[2 sentence feedback on last answer]",
-  "overallAssessment": "[2-3 sentence overall assessment of candidate]",
-  "closingMessage": "[warm but professional closing message]"
-}`
-
-const INTERVIEW_REPORT_PROMPT = `Generate an interview report for a candidate who just completed an interview.
-
-Conversation summary:
-{history}
-
-Total questions answered: {count}
-
-Provide:
-1. Overall interview score (0-100)
-2. Category breakdowns: Communication, Technical Relevance, STAR Method Usage, Confidence
-3. Top 3 strengths
-4. Top 3 improvements
-5. 2-3 sentence final verdict
-
-Respond ONLY with valid JSON:
-{
-  "overallScore": [0-100],
-  "communicationScore": [0-100],
-  "technicalScore": [0-100],
-  "starMethodScore": [0-100],
-  "confidenceScore": [0-100],
-  "strengths": ["strength 1", "strength 2", "strength 3"],
-  "improvements": ["improvement 1", "improvement 2", "improvement 3"],
-  "verdict": "[2-3 sentence overall verdict]"
-}`
-
-const INTERVIEW_QUESTIONS_GENERATE_PROMPT = `You are an expert interviewer at a top tech company. Based on the resume and job details below, generate exactly 10 interview questions that are highly tailored and realistic.
-
-RESUME:
-{resume}
-
-JOB TITLE: {jobTitle}
+RESUME DATA:
+${JSON.stringify(req.resume, null, 2)}
 
 JOB DESCRIPTION:
-{jobDescription}
+${req.jobDescription}
 
-Generate a mix of:
-- 3 behavioral questions (STAR format, based on candidate's actual experience)
-- 3 technical/role-specific questions (based on job requirements and resume skills)
-- 2 situational questions (realistic scenarios for this role)
-- 1 strengths/weakness question (relevant to this job)
-- 1 career goals question (connecting their background to this role)
+RULES:
+1. Output STRICT JSON ONLY
+2. Calculate honest match scores (most resumes score 45-75 initially)
+3. Identify specific missing keywords from JD
+4. Flag ATS risks (tables, graphics, non-standard headings, keyword stuffing)
+5. List proof gaps specific to this niche
+6. Suggest concrete improvements with impact
 
-Make questions specific — reference actual technologies, experiences, or requirements from the resume and JD. Do NOT generate generic questions.
-
-Respond ONLY with valid JSON in this exact format:
+OUTPUT FORMAT (STRICT JSON):
 {
-  "questions": [
-    {"question": "Tell me about a time you...", "category": "Behavioral", "difficulty": "Easy|Medium|Hard"},
-    {"question": "...", "category": "Technical", "difficulty": "Easy|Medium|Hard"}
-  ]
-}`
+  "overallScore": number (0-100, keyword overlap weighted),
+  "keywordMatchScore": number (0-100),
+  "skillsMatchScore": number (0-100),
+  "experienceMatchScore": number (0-100),
+  "matchedKeywords": ["string (keywords found in both)"],
+  "missingKeywords": ["string (important JD keywords not in resume)"],
+  "skillGaps": ["string (skills in JD but not well-represented)"],
+  "proofGaps": ["string (niche-specific proof points missing, be specific)"],
+  "atsRiskScore": number (0-100, lower is safer),
+  "atsWarnings": ["string (specific ATS formatting risks)"],
+  "improvementSuggestions": ["string (ranked by impact)"],
+  "sectionRelevance": [{
+    "section": "string (Experience|Education|Skills)",
+    "score": number (0-100),
+    "note": "string (why this score)"
+  }]
+}
 
-const INTERVIEW_GRADE_PROMPT = `You are an expert interviewer evaluating a candidate's answer for a {jobTitle} role.
+Respond with STRICT JSON ONLY:`
+}
 
-QUESTION: {question}
-CANDIDATE'S ANSWER: {answer}
+function buildInterviewPrompt(req: AIInterviewRequest): string {
+  const niche = getNicheContext(req.niche)
+  const jobTitle = req.resume.experience[0]?.title ?? 'this role'
 
-Evaluate and respond ONLY with valid JSON:
+  if (req.action === 'start') {
+    return `You are a senior technical recruiter at a top company conducting an interview. You MUST output STRICT JSON ONLY.
+
+CANDIDATE: ${req.resume.fullName}
+NICHE: ${niche.name}
+TARGET ROLE: ${jobTitle}
+
+CANDIDATE BACKGROUND:
+Summary: ${req.resume.summary ?? 'Not provided'}
+Experience: ${req.resume.experience.map((e: any) => `${e.title} at ${e.company}`).join(', ')}
+Skills: ${req.resume.skills.join(', ')}
+
+JOB DESCRIPTION:
+${req.jobDescription}
+
+TASK: Ask the first interview question — one focused, specific question that reveals something meaningful about the candidate's fit for ${jobTitle}.
+
+RULES:
+1. Output STRICT JSON ONLY
+2. First question should be behavioral (STAR) or role-specific technical
+3. Question must be tailored to candidate's actual experience
+4. No generic questions ("Tell me about yourself")
+5. Question should have one clear right dimension to probe
+
+OUTPUT FORMAT (STRICT JSON):
 {
-  "score": [integer 1-10],
-  "feedback": "[2-3 sentences of specific constructive feedback]",
-  "betterAnswer": "[A concise model answer in 3-4 sentences]"
-}`
+  "question": "string (specific, tailored question)",
+  "questionCategory": "Behavioral|Technical|Situational|Experience",
+  "isComplete": false
+}
 
-// CAREER MODE
-const CAREER_JOBS_PROMPT = `You are a career counselor AI. Analyze this resume and provide comprehensive career guidance.
+Respond with STRICT JSON ONLY:`
+  }
 
-RESUME:
-{resume}
+  // 'answer' action
+  const historyText = (req.history ?? []).map((m: any) => `${m.role === 'interviewer' ? 'Interviewer' : 'Candidate'}: ${m.content}`).join('\n')
 
-Respond ONLY with valid JSON in this exact format (no extra text):
+  return `You are a senior technical recruiter evaluating a candidate's interview answer. You MUST output STRICT JSON ONLY.
+
+CANDIDATE: ${req.resume.fullName}
+NICHE: ${niche.name}
+TARGET ROLE: ${jobTitle}
+
+CONVERSATION HISTORY:
+${historyText}
+
+LATEST ANSWER: ${req.answer ?? 'No answer provided'}
+
+TASK: Evaluate this answer and provide STAR feedback + next question.
+
+RULES:
+1. Output STRICT JSON ONLY
+2. Be DIRECT — if answer is vague, say so
+3. Push for specifics if lacking metrics/impact
+4. Score honestly (most answers score 5-8)
+5. Next question must follow up on weak points or go deeper
+
+OUTPUT FORMAT (STRICT JSON):
 {
-  "currentLevel": "Junior/Mid/Senior/Executive",
-  "summary": "2-sentence career overview",
-  "jobRoles": [
-    {"title": "Role Title", "matchPercent": 92, "reason": "why this fits", "salaryRange": "₹8-15 LPA"},
-    {"title": "Role Title", "matchPercent": 85, "reason": "why this fits", "salaryRange": "₹10-18 LPA"},
-    {"title": "Role Title", "matchPercent": 78, "reason": "why this fits", "salaryRange": "₹12-20 LPA"},
-    {"title": "Role Title", "matchPercent": 70, "reason": "why this fits", "salaryRange": "₹15-25 LPA"}
-  ],
-  "careerSwitch": {
-    "from": "current domain",
-    "to": "suggested new domain with high demand",
-    "timeframe": "6-12 months",
-    "steps": ["step 1", "step 2", "step 3", "step 4", "step 5"]
+  "question": "string (next interview question, follow-up or new dimension)",
+  "questionCategory": "Behavioral|Technical|Situational|Experience",
+  "feedback": "string (1-2 sentences direct feedback)",
+  "score": number (1-10, be honest),
+  "starFeedback": {
+    "situation": "string (context of the answer)",
+    "task": "string (their responsibility)",
+    "action": "string (specific action they took)",
+    "result": "string (measurable outcome)",
+    "scores": {
+      "situation": number (1-10),
+      "task": number (1-10),
+      "action": number (1-10),
+      "result": number (1-10)
+    },
+    "overall": number (0-100, weighted STAR),
+    "improvement": "string (one specific thing to improve)"
   },
-  "freelancePaths": [
-    {"platform": "Upwork", "url": "https://www.upwork.com", "niche": "specific niche", "howToStart": ["step 1", "step 2", "step 3"], "earnings": "₹2,000-8,000/hour"},
-    {"platform": "Fiverr", "url": "https://www.fiverr.com", "niche": "another niche", "howToStart": ["step 1", "step 2", "step 3"], "earnings": "$50-200/project"}
-  ],
-  "courses": [
-    {"name": "Course Name", "provider": "Coursera/Udemy/YouTube/etc", "url": "https://coursera.org/...", "free": false},
-    {"name": "Course Name", "provider": "YouTube", "url": "https://youtube.com/...", "free": true}
-  ],
-  "certifications": ["Cert 1", "Cert 2", "Cert 3", "Cert 4", "Cert 5"],
-  "dsaTopics": ["Arrays", "Dynamic Programming", "Graphs", "Trees", "System Design"]
+  "isComplete": boolean
 }
 
-Note: dsaTopics should be null if not technical. Use Indian salary ranges (LPA). Use real course URLs.`
-
-const CAREER_ROADMAP_PROMPT = `You are a career counselor building a highly specific, actionable career roadmap for someone.
-
-Current field: {detectedField}
-Target goal: {targetGoal}
-Current ATS score: {score}/100
-Context: Indian job market, use Indian salary ranges in LPA (Lakhs Per Annum)
-
-Build a realistic, step-by-step roadmap to get them from where they are to their target goal.
-
-Rules:
-- Steps must be concrete and specific
-- Include real resources with real URLs
-- Mix free and paid resources
-- Timeline must be realistic
-- DSA topics only if technical role
-- Salary jump should be realistic for Indian market
-
-Respond ONLY with valid JSON:
-{
-  "currentGoal": "{detectedField}",
-  "targetGoal": "{targetGoal}",
-  "timeframe": "X-Y months",
-  "salaryJump": "₹XL → ₹YL LPA",
-  "steps": [
-    {"week": "Week 1-2", "action": "Specific action", "resource": "Resource", "resourceUrl": "https://url.com", "free": true},
-    {"week": "Week 3-4", "action": "Next action", "resource": "Resource", "resourceUrl": "https://url.com", "free": false},
-    {"week": "Month 2", "action": "Action", "resource": "Resource", "resourceUrl": "https://url.com", "free": true},
-    {"week": "Month 3", "action": "Action", "resource": "Resource", "resourceUrl": "https://url.com", "free": true},
-    {"week": "Month 4-5", "action": "Build portfolio project", "resource": "GitHub", "resourceUrl": "https://github.com", "free": true},
-    {"week": "Month 5-6", "action": "Apply + network", "resource": "LinkedIn", "resourceUrl": "https://linkedin.com/jobs", "free": true}
-  ],
-  "certifications": ["Cert 1", "Cert 2", "Cert 3", "Cert 4"],
-  "dsaTopics": ["Arrays", "Strings", "Dynamic Programming", "Trees", "Graphs", "System Design", "SQL"]
-}`
-
-const LINKEDIN_OPTIMIZE_PROMPT = `You are a LinkedIn profile optimization expert. Analyze this LinkedIn profile content and provide detailed scoring and suggestions.
-
-PROFILE CONTENT:
-{profileText}
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "overallScore": [integer 0-100],
-  "summary": "[2 sentence overall assessment]",
-  "sectionScores": [
-    {"section": "Headline", "score": [0-100], "current": "[what they have]", "suggestion": "[specific improvement]"},
-    {"section": "About/Summary", "score": [0-100], "current": "[what they have]", "suggestion": "[specific improvement]"},
-    {"section": "Experience", "score": [0-100], "current": "[what they have]", "suggestion": "[specific improvement]"},
-    {"section": "Skills", "score": [0-100], "current": "[assessment]", "suggestion": "[specific improvement]"},
-    {"section": "Keywords & SEO", "score": [0-100], "current": "[assessment]", "suggestion": "[specific improvement]"}
-  ],
-  "topFixes": ["[fix 1]", "[fix 2]", "[fix 3]", "[fix 4]", "[fix 5]"],
-  "keywordsMissing": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8"]
-}`
-
-// CONVERT MODE
-const ENGLISH_TO_RIREKISHO_PROMPT = `You are an expert Japanese resume (履歴書 - Rirekisho) converter.
-
-Convert the following English resume into a proper Japanese Rirekisho format.
-
-IMPORTANT RULES:
-- Rirekisho is a standardized Japanese resume format
-- Use Japanese era dates (令和) for dates
-- All text must be in Japanese
-- Include these sections:
-  1. 氏名 (Name) - full name
-  2. 生年月日 (Date of Birth) - use Japanese era format (令和__)
-  3. 住所 (Address) - prefecture and city
-  4. 電話番号 (Phone)
-  5. メールアドレス (Email)
-  6. 学歴 (Education) - most recent first, use era format
-  7. 職歴 (Work Experience) - most recent first, include company and position
-  8. 保有スキル (Skills) - relevant skills
-  9. 資格 (Certifications) - any certifications
-  10. 自己PR (Self Introduction) - brief self-introduction
-
-Format requirements:
-- Clean, formal Japanese business format
-- Use proper spacing (全角 spaces)
-- Dates in 令和 format: 令和__年__月
-- Be concise and formal
-
-Original resume:
-{resumeText}
-
-Output ONLY the converted Rirekisho in Japanese text format. No JSON, no markdown.`
-
-const ENGLISH_TO_JIGISOGESEO_PROMPT = `You are an expert Korean resume (자기소개서 - Jigisogeseo) converter.
-
-Convert the following English resume into a proper Korean Jigisogeseo format.
-
-IMPORTANT RULES:
-- Jigisogeseo is a Korean resume/cover letter format
-- Include: personal info, education, experience, skills, self-introduction
-- Use formal Korean business language
-- Include these sections:
-  1. 이름 (Name)
-  2. 생년월일 (Date of Birth) - Korean format: 년도.월.일
-  3. 주소 (Address)
-  4. 연락처 (Contact)
-  5. 학력 (Education)
-  6. 경력 (Work Experience)
-  7. 기술 (Skills)
-  8. 자격증 (Certifications)
-  9. 자기소개 (Self Introduction)
-
-Format requirements:
-- Formal Korean business format
-- Use Korean age system (만 나이) where appropriate
-- Professional and concise
-
-Original resume:
-{resumeText}
-
-Output ONLY the converted Jigisogeseo in Korean text format. No JSON, no markdown.`
-
-const RIREKISHO_TO_ENGLISH_PROMPT = `You are an expert at converting Japanese Rirekisho resumes to standard English ATS format.
-
-Extract information from this Japanese Rirekisho and convert to a professional English resume.
-
-Original Rirekisho:
-{resumeText}
-
-Convert to English ATS resume with:
-- Standard Western name format
-- Education in reverse chronological order
-- Work experience with clear bullet points
-- Quantified achievements
-- ATS-optimized keywords
-- Professional summary
-
-Output ONLY the English resume text. No JSON, no markdown, no code fences.`
-
-const JIGISOGESEO_TO_ENGLISH_PROMPT = `You are an expert at converting Korean Jigisogeseo resumes to standard English ATS format.
-
-Extract information from this Korean Jigisogeseo and convert to a professional English resume.
-
-Original Jigisogeseo:
-{resumeText}
-
-Convert to English ATS resume with:
-- Standard Western name format
-- Education in reverse chronological order
-- Work experience with clear bullet points
-- Quantified achievements
-- ATS-optimized keywords
-- Professional summary
-
-Output ONLY the English resume text. No JSON, no markdown, no code fences.`
-
-// GENERAL MODE
-const GENERAL_ASSIST_PROMPT = `You are a career assistant for CraftlyCV. Give concise, structured answers.
-
-Query: {query}
-
-Context: {context}
-
-Rules:
-- Be practical, not motivational fluff
-- Give step-by-step actions when requested
-- Prefer high-income paths
-- Bullet points
-- No long essays
-- No hallucination
-- Always structured output`
-
-// ─── Helper: Parse JSON from response ─────────────────────────────────────────
-
-function parseJSONResponse(text: string): any {
-  const cleaned = text.replace(/```json\n?|```\n?/g, '').trim()
-  const match = cleaned.match(/\{[\s\S]*\}/) || cleaned.match(/\[[\s\S]*\]/)
-  if (!match) throw new Error('Failed to parse AI response')
-  return JSON.parse(match[0])
-}
-
-function parseJSONArray(text: string): any[] {
-  const cleaned = text.replace(/```json\n?|```\n?/g, '').trim()
-  const match = cleaned.match(/\[[\s\S]*\]/)
-  if (!match) throw new Error('Failed to parse AI response')
-  return JSON.parse(match[0])
+Respond with STRICT JSON ONLY:`
 }
 
 // ─── Mode Handlers ─────────────────────────────────────────────────────────────
 
-async function handleResume(request: AIRequest): Promise<AIResponse> {
-  const genAI = getGenAI()
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+async function handleResume(req: AIResumeRequest): Promise<AIResponse> {
+  const prompt = buildResumePrompt(req)
+  const raw = await generateWithRetry(prompt)
+  const parsed = parseJSON<any>(raw)
+  const cleaned = cleanObject(parsed)
 
-  // Sub-action detection
-  const improvements = request.improvements
-  const resumeText = request.resumeText || ''
-
-  if (improvements && improvements.length > 0) {
-    // Resume improvement
-    const prompt = RESUME_IMPROVE_PROMPT
-      .replace('{resumeText}', resumeText)
-      .replace('{improvements}', improvements.map((imp, i) => `${i + 1}. ${imp}`).join('\n'))
-
-    let raw = await generateWithRetry(model, prompt)
-    raw = raw.replace(/```[\s\S]*?```/g, '').trim()
-    return { success: true, data: { improvedText: raw } }
+  if (!cleaned.tailoredResume) {
+    return { success: false, data: FALLBACK_ERROR }
   }
 
-  if (request.jobDescription) {
-    // Resume tailoring
-    const prompt = RESUME_TAILOR_PROMPT
-      .replace('{resumeText}', resumeText)
-      .replace('{jobDescription}', request.jobDescription)
-
-    let raw = await generateWithRetry(model, prompt)
-    raw = raw.replace(/```[\s\S]*?```/g, '').trim()
-
-    const scoreMatch = raw.match(/MATCH_SCORE:\s*(\d+)/)
-    const matchScore = scoreMatch ? parseInt(scoreMatch[1]) : 85
-    const impSection = raw.match(/IMPROVEMENTS:\n([\s\S]+)$/)
-    const improvementList = impSection
-      ? impSection[1].split('\n').filter(l => l.trim().startsWith('-')).map(l => l.replace(/^-\s*/, '').trim())
-      : []
-    const tailoredText = raw.replace(/MATCH_SCORE:[\s\S]*$/, '').trim()
-
-    return {
-      success: true,
-      data: { tailoredText, matchScore, improvements: improvementList }
-    }
+  return {
+    success: true,
+    data: cleaned as AIResumeResponse,
   }
-
-  // Resume analysis (ATS scoring)
-  const prompt = RESUME_ANALYSIS_PROMPT.replace('{resumeText}', resumeText)
-  let raw = await generateWithRetry(model, prompt)
-  raw = raw.replace(/```json|```/g, '').trim()
-
-  const jsonMatch = raw.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) return { success: false, error: 'Failed to parse AI response' }
-
-  const parsed = JSON.parse(jsonMatch[0])
-  return { success: true, data: parsed }
 }
 
-async function handleInterview(request: AIRequest): Promise<AIResponse> {
-  const genAI = getGenAI()
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
-  const action = request.interviewAction || 'start'
-  const jobTitle = request.jobTitle || 'Software Engineer'
+async function handleMatch(req: AIMatchRequest): Promise<AIResponse> {
+  const prompt = buildMatchPrompt(req)
+  const raw = await generateWithRetry(prompt)
+  const parsed = parseJSON<any>(raw)
+  const cleaned = cleanObject(parsed)
 
-  // Generate interview questions (one-shot)
-  if (action === 'start' && request.resumeText && request.jobTitle) {
-    const prompt = INTERVIEW_QUESTIONS_GENERATE_PROMPT
-      .replace('{resume}', (request.resumeText || '').substring(0, 2000))
-      .replace('{jobTitle}', request.jobTitle)
-      .replace('{jobDescription}', request.jobDescription || '')
-
-    let raw = await generateWithRetry(model, prompt)
-    raw = raw.replace(/```json|```/g, '').trim()
-    const parsed = parseJSONResponse(raw)
-    return { success: true, data: { questions: parsed.questions || parsed } }
+  if (!cleaned.overallScore) {
+    return { success: false, data: FALLBACK_ERROR }
   }
 
-  // Grade a single answer
-  if (action === 'continue' && !request.conversationHistory) {
-    const { question, answer } = request.context || {}
-    if (!question || !answer) return { success: false, error: 'Missing question or answer' }
-
-    const prompt = INTERVIEW_GRADE_PROMPT
-      .replace('{jobTitle}', jobTitle)
-      .replace('{question}', question)
-      .replace('{answer}', answer)
-
-    let raw = await generateWithRetry(model, prompt)
-    raw = raw.replace(/```json|```/g, '').trim()
-    const parsed = parseJSONResponse(raw)
-    return { success: true, data: parsed }
+  return {
+    success: true,
+    data: cleaned as AIMatchResponse,
   }
-
-  // Multi-turn interview continue
-  if (action === 'continue' && request.conversationHistory) {
-    const historyText = request.conversationHistory
-      .map(m => `${m.role === 'interviewer' ? 'Interviewer' : 'Candidate'}: ${m.content}`)
-      .join('\n')
-    const latestAnswer = request.context?.answer || ''
-
-    const prompt = INTERVIEW_CONTINUE_PROMPT
-      .replace('{role}', jobTitle)
-      .replace('{history}', historyText)
-      .replace('{answer}', latestAnswer)
-
-    let raw = await generateWithRetry(model, prompt)
-    const parsed = parseJSONResponse(raw)
-
-    // Also get STAR feedback
-    let starData = null
-    try {
-      const starRaw = await generateWithRetry(model, INTERVIEW_STAR_PROMPT.replace('{answer}', latestAnswer))
-      starData = parseJSONResponse(starRaw)
-    } catch { /* optional */ }
-
-    return { success: true, data: { ...parsed, starFeedback: starData } }
-  }
-
-  // Finish interview
-  if (action === 'finish' && request.conversationHistory) {
-    const historyText = request.conversationHistory
-      .map(m => `${m.role === 'interviewer' ? 'Interviewer' : 'Candidate'}: ${m.content}`)
-      .join('\n')
-    const finalAnswer = request.context?.answer || ''
-
-    const prompt = INTERVIEW_FINISH_PROMPT
-      .replace('{role}', jobTitle)
-      .replace('{history}', historyText)
-      .replace('{answer}', finalAnswer)
-
-    let raw = await generateWithRetry(model, prompt)
-    const parsed = parseJSONResponse(raw)
-
-    // Generate overall report
-    let reportData = null
-    try {
-      const reportRaw = await generateWithRetry(model,
-        INTERVIEW_REPORT_PROMPT
-          .replace('{history}', historyText)
-          .replace('{count}', String(request.context?.questionCount || 5))
-      )
-      reportData = parseJSONResponse(reportRaw)
-    } catch { /* optional */ }
-
-    return { success: true, data: { ...parsed, report: reportData } }
-  }
-
-  return { success: false, error: 'Invalid interview action' }
 }
 
-async function handleCareer(request: AIRequest): Promise<AIResponse> {
-  const genAI = getGenAI()
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+async function handleInterview(req: AIInterviewRequest): Promise<AIResponse> {
+  const prompt = buildInterviewPrompt(req)
+  const raw = await generateWithRetry(prompt)
+  const parsed = parseJSON<any>(raw)
+  const cleaned = cleanObject(parsed)
 
-  // Job suggestions from resume
-  if (request.resumeText && !request.context?.detectedField) {
-    const prompt = CAREER_JOBS_PROMPT.replace('{resume}', request.resumeText)
-    let raw = await generateWithRetry(model, prompt)
-    raw = raw.replace(/```json|```/g, '').trim()
-    const parsed = parseJSONResponse(raw)
-    return { success: true, data: parsed }
+  if (!cleaned.question) {
+    return { success: false, data: FALLBACK_ERROR }
   }
 
-  // Career roadmap
-  if (request.context?.targetGoal) {
-    const prompt = CAREER_ROADMAP_PROMPT
-      .replace('{detectedField}', request.context.detectedField || 'unknown')
-      .replace('{targetGoal}', request.context.targetGoal)
-      .replace('{score}', String(request.context.score || 50))
-
-    let raw = await generateWithRetry(model, prompt)
-    raw = raw.replace(/```json|```/g, '').trim()
-    const jsonMatch = raw.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { success: false, error: 'Failed to parse roadmap' }
-    return { success: true, data: JSON.parse(jsonMatch[0]) }
+  return {
+    success: true,
+    data: cleaned as AIInterviewResponse,
   }
-
-  // LinkedIn optimization
-  if (request.context?.linkedInProfile) {
-    const prompt = LINKEDIN_OPTIMIZE_PROMPT.replace('{profileText}', request.context.linkedInProfile)
-    let raw = await generateWithRetry(model, prompt)
-    raw = raw.replace(/```json|```/g, '').trim()
-    const parsed = parseJSONResponse(raw)
-    return { success: true, data: parsed }
-  }
-
-  return { success: false, error: 'Invalid career request' }
-}
-
-async function handleConvert(request: AIRequest): Promise<AIResponse> {
-  const genAI = getGenAI()
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
-  const source = request.sourceLanguage || 'en'
-  const target = request.targetLanguage || 'en'
-  const resumeText = request.resumeText || ''
-
-  if (source === target) {
-    return { success: true, data: { convertedResume: resumeText } }
-  }
-
-  let prompt = ''
-
-  if (source === 'en' && target === 'ja') {
-    prompt = ENGLISH_TO_RIREKISHO_PROMPT.replace('{resumeText}', resumeText)
-  } else if (source === 'en' && target === 'ko') {
-    prompt = ENGLISH_TO_JIGISOGESEO_PROMPT.replace('{resumeText}', resumeText)
-  } else if (source === 'ja' && target === 'en') {
-    prompt = RIREKISHO_TO_ENGLISH_PROMPT.replace('{resumeText}', resumeText)
-  } else if (source === 'ko' && target === 'en') {
-    prompt = JIGISOGESEO_TO_ENGLISH_PROMPT.replace('{resumeText}', resumeText)
-  } else if (source === 'en') {
-    prompt = `Convert this English resume to ${target} format. Keep all factual information accurate.
-
-Original Resume:
-${resumeText}
-
-Output ONLY the converted resume. No JSON, no markdown.`
-  } else if (target === 'en') {
-    prompt = `Convert this resume to professional English ATS format. Extract all information and present it in a clear, structured format.
-
-Original Resume:
-${resumeText}
-
-Output ONLY the English resume. No JSON, no markdown.`
-  } else {
-    // Bridge through English
-    const bridgePrompt = `Convert this resume to English, preserving all factual information accurately.
-
-Original:
-${resumeText}
-
-Output ONLY the English version.`
-    const bridgeResult = await generateWithRetry(model, bridgePrompt)
-    const englishVersion = bridgeResult.replace(/```[\s\S]*?```/g, '').trim()
-
-    prompt = `Convert this English resume to ${target} format. Adapt to cultural expectations.
-
-English Resume:
-${englishVersion}
-
-Output ONLY the converted resume.`
-  }
-
-  let raw = await generateWithRetry(model, prompt)
-  raw = raw.replace(/```[\s\S]*?```/g, '').trim()
-  return { success: true, data: { convertedResume: raw } }
-}
-
-async function handleGeneral(request: AIRequest): Promise<AIResponse> {
-  const genAI = getGenAI()
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
-
-  const query = request.query || ''
-  const context = JSON.stringify(request.context || {})
-
-  const prompt = GENERAL_ASSIST_PROMPT
-    .replace('{query}', query)
-    .replace('{context}', context)
-
-  let raw = await generateWithRetry(model, prompt, { maxOutputTokens: 5000 })
-  raw = raw.replace(/```[\s\S]*?```/g, '').trim()
-  return { success: true, data: { response: raw } }
 }
 
 // ─── Main Router ───────────────────────────────────────────────────────────────
 
 export async function aiRouter(request: AIRequest): Promise<AIResponse> {
-  try {
-    if (!GEMINI_API_KEY) {
-      return { success: false, error: 'GEMINI_API_KEY not configured' }
-    }
+  if (!GEMINI_API_KEY) {
+    return { success: false, data: { error: 'AI_NOT_CONFIGURED', message: 'GEMINI_API_KEY not set' } }
+  }
 
+  try {
     switch (request.mode) {
       case 'resume':
         return await handleResume(request)
+      case 'match':
+        return await handleMatch(request)
       case 'interview':
         return await handleInterview(request)
-      case 'career':
-        return await handleCareer(request)
-      case 'convert':
-        return await handleConvert(request)
-      case 'general':
-        return await handleGeneral(request)
-      default:
-        return { success: false, error: `Unknown mode: ${request.mode}` }
+      default: {
+        const unknown = request as any
+        return { success: false, data: { error: 'INVALID_MODE', message: `Unknown mode: ${unknown.mode}` } }
+      }
     }
-  } catch (error) {
-    console.error('AI router error:', error)
-    // Return fallback based on mode
-    const mode = request.mode || 'general'
-    const fallback = FALLBACK_RESPONSES[mode] || FALLBACK_RESPONSES.general
-    return {
-      success: true,
-      data: fallback,
-    }
+  } catch (err) {
+    console.error('[ai-router] Error:', err)
+    return { success: false, data: FALLBACK_ERROR }
   }
 }
 
-// ─── Specific action helpers (used by routes for scan costing) ─────────────────
-
-export async function buildSummary(data: {
-  name?: string
-  workExp?: Array<{ role?: string; company?: string }>
-  skills?: string[]
-  education?: Array<{ institution?: string; degree?: string }>
-}): Promise<string> {
-  const genAI = getGenAI()
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
-
-  const prompt = BUILD_SUMMARY_PROMPT
-    .replace('{name}', data.name || 'Not specified')
-    .replace('{role}', data.workExp?.[0]?.role || 'Not specified')
-    .replace('{companies}', data.workExp?.map((w: any) => w.company).join(', ') || 'Not specified')
-    .replace('{skills}', data.skills?.join(', ') || 'Not specified')
-    .replace('{education}', data.education?.[0]?.degree + ' from ' + data.education?.[0]?.institution || '')
-
-  const result = await generateWithRetry(model, prompt)
-  return result.trim()
-}
-
-export async function buildBullets(company: string, role: string, bullets: string[]): Promise<string[]> {
-  const genAI = getGenAI()
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
-
-  const prompt = BUILD_BULLETS_PROMPT
-    .replace('{company}', company)
-    .replace('{role}', role)
-    .replace('{bullets}', bullets.map((b, i) => `${i + 1}. ${b || '(empty)'}`).join('\n'))
-
-  let raw = await generateWithRetry(model, prompt)
-  raw = raw.replace(/```[\s\S]*?```/g, '').trim()
-  const match = raw.match(/\[[\s\S]*\]/)
-  return match ? JSON.parse(match[0]) : bullets
-}
-
-// ─── Health Check ────────────────────────────────────────────────────────────────
+// ─── Health Check ─────────────────────────────────────────────────────────────
 
 export function isAIConfigured(): boolean {
   try {
@@ -991,10 +577,4 @@ export function isAIConfigured(): boolean {
   } catch {
     return false
   }
-}
-
-export function getAIProvider(): string {
-  if (ANTHROPIC_API_KEY) return 'anthropic'
-  if (GEMINI_API_KEY) return 'gemini'
-  return 'none'
 }

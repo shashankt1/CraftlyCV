@@ -26,25 +26,22 @@ function AuthContent() {
     e.preventDefault()
     setLoading(true)
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (error) {
-      toast.error(error.message)
+      if (error) {
+        toast.error(error.message)
+        setLoading(false)
+        return
+      }
+
+      // Immediately check onboarding status after login
+      const redirectTo = searchParams.get('redirect') || '/dashboard'
+      router.push(redirectTo)
+    } catch (err) {
+      console.error('Sign in error:', err)
+      toast.error('Sign in failed. Please try again.')
       setLoading(false)
-      return
-    }
-
-    // Check if user has completed onboarding
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('plan')
-      .eq('id', data.user?.id)
-      .single()
-
-    if (profile?.plan) {
-      router.push('/dashboard')
-    } else {
-      router.push('/onboarding')
     }
   }
 

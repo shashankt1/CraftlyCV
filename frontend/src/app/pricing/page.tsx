@@ -192,7 +192,7 @@ export default function PricingPage() {
     }
   }, [])
 
-  const handlePurchase = async (planId: string, amount: number) => {
+  const handlePurchase = async (planId: string) => {
     if (!user) { router.push('/auth?redirect=/pricing'); return }
     if (currency === 'USD') {
       toast.error('USD payments coming soon. Please select INR for now.')
@@ -202,24 +202,28 @@ export default function PricingPage() {
     try {
       const res = await fetch('/api/payments/create-order', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId, amount, userId: user.id }),
+        body: JSON.stringify({ planId, userId: user.id }),
       })
       const order = await res.json()
-      if (!res.ok) throw new Error(order.error)
+      if (!order.success) throw new Error(order.message || order.error)
 
       const win = window as any
       if (!win.Razorpay) { toast.error('Payment gateway not loaded. Please refresh.'); setLoading(null); return }
       const rzp = new win.Razorpay({
-        key: order.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: order.amount, currency: order.currency || 'INR', order_id: order.orderId,
-        name: 'CraftlyCV', description: `${planId} Plan`,
+        key: order.data.razorpayKey,
+        amount: order.data.amount,
+        currency: order.data.currency || 'INR',
+        order_id: order.data.orderId,
+        name: 'CraftlyCV',
+        description: `${planId.replace(/_/g, ' ')} Plan`,
         handler: async (response: any) => {
           const verify = await fetch('/api/payments/verify', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...response, userId: user.id, planId }),
           })
-          if (verify.ok) { toast.success('Payment successful! Welcome to Pro 🎉'); router.push('/dashboard') }
-          else toast.error('Verification failed')
+          const verifyData = await verify.json()
+          if (verifyData.success) { toast.success('Payment successful!'); router.push('/dashboard') }
+          else toast.error(verifyData.message || 'Verification failed')
         },
         prefill: { email: user.email },
         theme: { color: '#1E6FD9' },
@@ -230,15 +234,12 @@ export default function PricingPage() {
     } finally { setLoading(null) }
   }
 
-  const formatPrice = (plan: Plan) => {
+  const handleFormatPrice = (plan: Plan) => {
     const price = currency === 'INR' ? plan.priceINR : plan.priceUSD
     return currency === 'INR' ? `₹${price}` : `$${price}`
   }
 
-  const getAmount = (plan: Plan) => {
-    const price = currency === 'INR' ? plan.priceINR : plan.priceUSD
-    return price * 100 // razorpay uses paisa/cents
-  }
+  const getPlanId = (plan: Plan) => plan.id
 
   return (
     <div className="min-h-screen relative text-white">
@@ -287,7 +288,7 @@ export default function PricingPage() {
             <div className={`rounded-2xl p-6 border border-white/8 bg-white/3 flex flex-col ${PLANS[0].highlight ? 'lg:col-span-1' : ''}`}>
               <div className="mb-5">
                 <p className="text-white/50 text-sm font-semibold mb-1">{PLANS[0].name}</p>
-                <div className="text-4xl font-black text-white">{formatPrice(PLANS[0])}</div>
+                <div className="text-4xl font-black text-white">{handleFormatPrice(PLANS[0])}</div>
                 <p className="text-blue-400 text-sm font-bold mt-1">{PLANS[0].scansLabel}</p>
               </div>
               <ul className="space-y-2.5 mb-6 flex-1">
@@ -313,7 +314,7 @@ export default function PricingPage() {
               <div className="mb-5">
                 <p className="text-white/50 text-sm font-semibold mb-1">{PLANS[1].name}</p>
                 <div className="flex items-baseline gap-1 mb-1">
-                  <span className="text-4xl font-black text-white">{formatPrice(PLANS[1])}</span>
+                  <span className="text-4xl font-black text-white">{handleFormatPrice(PLANS[1])}</span>
                   {PLANS[1].period && <span className="text-white/40 text-sm">{PLANS[1].period}</span>}
                 </div>
                 <p className="text-blue-400 text-sm font-bold mt-1">{PLANS[1].scansLabel}</p>
@@ -326,7 +327,7 @@ export default function PricingPage() {
                 ))}
               </ul>
               <button
-                onClick={() => handlePurchase(PLANS[1].id, getAmount(PLANS[1]))}
+                onClick={() => handlePurchase(getPlanId(PLANS[1]))}
                 disabled={loading === PLANS[1].id}
                 className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                 {loading === PLANS[1].id ? 'Processing...' : <><Zap className="h-4 w-4" />{PLANS[1].cta}</>}
@@ -345,7 +346,7 @@ export default function PricingPage() {
                 <div className="mb-5">
                   <p className="text-white/50 text-sm font-semibold mb-1">{PLANS[2].name}</p>
                   <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-4xl font-black text-white">{formatPrice(PLANS[2])}</span>
+                    <span className="text-4xl font-black text-white">{handleFormatPrice(PLANS[2])}</span>
                     {PLANS[2].period && <span className="text-white/40 text-sm">{PLANS[2].period}</span>}
                   </div>
                   <p className="text-blue-400 text-sm font-bold mt-1">{PLANS[2].scansLabel}</p>
@@ -358,7 +359,7 @@ export default function PricingPage() {
                   ))}
                 </ul>
                 <button
-                  onClick={() => handlePurchase(PLANS[2].id, getAmount(PLANS[2]))}
+                  onClick={() => handlePurchase(getPlanId(PLANS[2]))}
                   disabled={loading === PLANS[2].id}
                   className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm transition-all shadow-xl shadow-blue-500/20 hover:scale-[1.02] disabled:opacity-50 flex items-center justify-center gap-2">
                   {loading === PLANS[2].id ? 'Processing...' : <><Zap className="h-4 w-4" />{PLANS[2].cta}</>}
@@ -382,7 +383,7 @@ export default function PricingPage() {
                     </div>
                     <p className="text-white/50 text-sm font-semibold mb-1">{FOUNDING.name}</p>
                     <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-4xl font-black text-white">{formatPrice(FOUNDING)}</span>
+                      <span className="text-4xl font-black text-white">{handleFormatPrice(FOUNDING)}</span>
                       {FOUNDING.period && <span className="text-white/40 text-sm">{FOUNDING.period}</span>}
                     </div>
                     <p className="text-orange-400 text-sm font-black mt-1">{FOUNDING.scansLabel}</p>
@@ -407,7 +408,7 @@ export default function PricingPage() {
                   </ul>
 
                   <button
-                    onClick={() => handlePurchase(FOUNDING.id, getAmount(FOUNDING))}
+                    onClick={() => handlePurchase(FOUNDING.id)}
                     disabled={loading === FOUNDING.id}
                     className="w-full py-3.5 rounded-xl font-black text-sm transition-all hover:scale-[1.02] disabled:opacity-50 flex items-center justify-center gap-2 text-white"
                     style={{ background: 'linear-gradient(135deg, #ea580c, #f97316)', boxShadow: '0 4px 20px rgba(234,88,12,0.25)' }}>
@@ -486,7 +487,7 @@ export default function PricingPage() {
             The average salary bump from a job switch in India is ₹3–6L. CraftlyCV costs less than a week's coffee.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button onClick={() => handlePurchase(FOUNDING.id, getAmount(FOUNDING))}
+            <button onClick={() => handlePurchase(FOUNDING.id)}
               className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl text-white font-black text-lg transition-all hover:scale-105"
               style={{ background: 'linear-gradient(135deg, #ea580c, #f97316)', boxShadow: '0 8px 32px rgba(234,88,12,0.25)' }}>
               <Crown className="h-5 w-5" />Claim ₹399 Lifetime Deal

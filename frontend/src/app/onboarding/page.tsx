@@ -32,14 +32,14 @@ export default function OnboardingPage() {
       }
       setUserId(user.id)
 
-      // Check if already onboarded
+      // Check if already onboarded (onboarding_completed flag)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('plan')
+        .select('onboarding_completed')
         .eq('id', user.id)
         .single()
 
-      if (profile?.plan) {
+      if (profile?.onboarding_completed === true) {
         router.push('/dashboard')
       }
 
@@ -68,28 +68,50 @@ export default function OnboardingPage() {
         return
       }
 
-      // Create profile with 10 free scans
-      const { error } = await supabase.from('profiles').upsert({
-        id: userId,
-        username: username.toLowerCase(),
-        plan: selectedPlan,
-        scans: 10, // 10 free scans on signup
-        referral_code: generateReferralCode(),
-        created_at: new Date().toISOString(),
-        resume_updated_at: null,
-      })
+      // Update profile with onboarding data
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          username: username.toLowerCase(),
+          plan: selectedPlan,
+          onboarding_completed: true,
+          onboarding_step: 2,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
 
       if (error) {
-        toast.error('Failed to create profile: ' + error.message)
-        setLoading(false)
-        return
+        // Profile might not exist yet, try insert
+        if (error.code === 'PGRST116' || error.code === '22P02') {
+          const { error: insertError } = await supabase.from('profiles').upsert({
+            id: userId,
+            username: username.toLowerCase(),
+            plan: selectedPlan,
+            scans: 10,
+            referral_code: generateReferralCode(),
+            onboarding_completed: true,
+            onboarding_step: 2,
+            country: 'US',
+            language: 'en',
+            currency: 'USD',
+          })
+          if (insertError) {
+            toast.error('Failed to create profile: ' + insertError.message)
+            setLoading(false)
+            return
+          }
+        } else {
+          toast.error('Failed to update profile: ' + error.message)
+          setLoading(false)
+          return
+        }
       }
 
       toast.success('Welcome to CraftlyCV! You have 10 free scans.')
-      
-      // If they selected a paid plan, redirect to pricing
+
+      // If they selected a paid plan, redirect to billing
       if (selectedPlan !== 'free') {
-        router.push('/pricing?plan=' + selectedPlan)
+        router.push('/billing')
       } else {
         router.push('/dashboard')
       }
@@ -142,7 +164,8 @@ export default function OnboardingPage() {
                       {'popular' in plan && plan.popular && <Badge>Popular</Badge>}
                     </div>
                     <div className="text-2xl font-bold mb-1">
-                      {plan.monthlyPrice === 0 ? 'Free' : `₹${plan.monthlyPrice}/mo`}
+                      {plan.price === 0 ? 'Free' : `$${plan.price}`}
+                      {plan.price > 0 && <span className="text-sm font-normal text-muted-foreground"> one-time</span>}
                     </div>
                     <p className="text-sm text-muted-foreground mb-4">{plan.description}</p>
                     <ul className="space-y-2 text-sm">

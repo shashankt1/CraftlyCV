@@ -1,72 +1,190 @@
--- CraftlyCV Supabase Database Schema v2.0
+-- CraftlyCV Supabase Schema v3.0
 -- Production-Ready Schema for Vercel Deployment
 -- Run this in your Supabase SQL Editor
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- ─── PROFILES TABLE ────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- CORE PROFILES (extends auth.users)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email VARCHAR(255),
   username VARCHAR(20) UNIQUE,
-  scans INTEGER DEFAULT 10 CHECK (scans >= 0),
-  plan VARCHAR(20) DEFAULT 'free' CHECK (plan IN ('free', 'starter', 'pro', 'lifetime', 'enterprise')),
+  -- CraftlyCV Specific
+  scans INTEGER DEFAULT 3 CHECK (scans >= 0),
+  plan VARCHAR(20) DEFAULT 'free' CHECK (plan IN ('free', 'career_launch', 'niche_pro', 'concierge')),
   role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-  country VARCHAR(10) DEFAULT 'IN',
+  -- User Preferences
+  country VARCHAR(10) DEFAULT 'US',
   language VARCHAR(10) DEFAULT 'en',
-  currency VARCHAR(5) DEFAULT 'INR',
+  currency VARCHAR(5) DEFAULT 'USD',
+  professional_track VARCHAR(30) DEFAULT 'general' CHECK (professional_track IN ('general', 'cybersecurity', 'nursing', 'skilled_trades', 'creative_tech')),
+  experience_level VARCHAR(20) DEFAULT 'mid' CHECK (experience_level IN ('entry', 'mid', 'senior', 'executive')),
+  -- Onboarding
+  onboarding_completed BOOLEAN DEFAULT false,
+  onboarding_step INTEGER DEFAULT 0,
+  -- Referral
   referral_code VARCHAR(10) UNIQUE,
   referred_by UUID REFERENCES profiles(id),
-  resume_updated_at TIMESTAMPTZ,
+  -- Timestamps
   last_active_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── RESUMES TABLE ───────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS resumes (
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- CRAFTLYCV CORE TABLES
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- ─── MASTER RESUMES VAULT ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS master_resumes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  content TEXT,
-  ats_score INTEGER,
+  name VARCHAR(100) DEFAULT 'My Master Resume',
+  is_primary BOOLEAN DEFAULT false,
+  -- Personal Info
+  full_name VARCHAR(200),
+  email VARCHAR(255),
+  phone VARCHAR(50),
+  location VARCHAR(200),
+  linkedin_url VARCHAR(500),
+  github_url VARCHAR(500),
+  website_url VARCHAR(500),
+  professional_summary TEXT,
+  -- Structured JSON Sections
+  experience JSONB DEFAULT '[]'::jsonb,
+  education JSONB DEFAULT '[]'::jsonb,
+  skills JSONB DEFAULT '[]'::jsonb,
+  certifications JSONB DEFAULT '[]'::jsonb,
+  projects JSONB DEFAULT '[]'::jsonb,
+  awards JSONB DEFAULT '[]'::jsonb,
+  tools JSONB DEFAULT '[]'::jsonb,
+  languages JSONB DEFAULT '[]'::jsonb,
+  -- Niche classification
+  primary_niche VARCHAR(30) DEFAULT 'general' CHECK (primary_niche IN ('general', 'cybersecurity', 'nursing', 'skilled_trades', 'creative_tech')),
+  -- Meta
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── PAYMENT TRANSACTIONS TABLE ────────────────────────────────────────────────
+-- ─── TAILORED VERSIONS ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS tailored_versions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  master_resume_id UUID REFERENCES master_resumes(id) ON DELETE CASCADE,
+  name VARCHAR(100) NOT NULL,
+  -- Target Job
+  target_job_title VARCHAR(200),
+  target_company VARCHAR(200),
+  target_job_description TEXT,
+  target_seniority VARCHAR(20),
+  -- Tailored Content
+  tailored_summary TEXT,
+  tailored_experience JSONB DEFAULT '[]'::jsonb,
+  tailored_skills JSONB DEFAULT '[]'::jsonb,
+  tailored_education JSONB DEFAULT '[]'::jsonb,
+  -- Match Scores
+  match_score INTEGER,
+  ats_risk_score INTEGER,
+  missing_keywords TEXT[],
+  matched_keywords TEXT[],
+  proof_gaps TEXT[],
+  -- AI Suggestions
+  ai_suggestions JSONB DEFAULT '[]'::jsonb,
+  ats_warnings JSONB DEFAULT '[]'::jsonb,
+  authenticity_warnings JSONB DEFAULT '[]'::jsonb,
+  -- Version Control
+  version_number INTEGER DEFAULT 1,
+  parent_version_id UUID REFERENCES tailored_versions(id),
+  is_latest BOOLEAN DEFAULT true,
+  status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'ready', 'applied')),
+  -- Export Tracking
+  exported_count INTEGER DEFAULT 0,
+  last_exported_at TIMESTAMPTZ,
+  export_mode VARCHAR(20) DEFAULT 'ats_safe' CHECK (export_mode IN ('ats_safe', 'creative_premium')),
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── MATCH REPORTS ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS match_reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  tailored_version_id UUID REFERENCES tailored_versions(id) ON DELETE SET NULL,
+  master_resume_id UUID REFERENCES master_resumes(id) ON DELETE SET NULL,
+  -- Scores
+  overall_match_score INTEGER,
+  keyword_match_score INTEGER,
+  skills_match_score INTEGER,
+  experience_match_score INTEGER,
+  proof_signal_score INTEGER,
+  -- Analysis Results
+  matched_keywords TEXT[],
+  missing_keywords TEXT[],
+  skill_gaps TEXT[],
+  proof_gaps TEXT[],
+  suggested_bullets JSONB DEFAULT '[]'::jsonb,
+  section_relevance JSONB DEFAULT '[]'::jsonb,
+  ats_warnings JSONB DEFAULT '[]'::jsonb,
+  improvement_suggestions TEXT[],
+  -- Job Details
+  job_title VARCHAR(200),
+  company_name VARCHAR(200),
+  job_description TEXT,
+  analyzed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── NICHE TEMPLATES ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS niche_templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  niche VARCHAR(30) NOT NULL CHECK (niche IN ('cybersecurity', 'nursing', 'skilled_trades', 'creative_tech')),
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  -- Template Structure
+  suggested_sections JSONB DEFAULT '[]'::jsonb,
+  skill_taxonomy JSONB DEFAULT '[]'::jsonb,
+  achievement_prompts JSONB DEFAULT '[]'::jsonb,
+  summary_template TEXT,
+  bullet_templates JSONB DEFAULT '[]'::jsonb,
+  -- Roles
+  roles JSONB DEFAULT '[]'::jsonb,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── EXPORT HISTORY ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS export_history (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  tailored_version_id UUID REFERENCES tailored_versions(id) ON DELETE SET NULL,
+  export_format VARCHAR(10) DEFAULT 'pdf' CHECK (export_format IN ('pdf', 'docx', 'html', 'txt')),
+  export_mode VARCHAR(20) DEFAULT 'ats_safe',
+  file_url TEXT,
+  ats_parser_preview TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── PAYMENT TRANSACTIONS ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS payment_transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   payment_id VARCHAR(100) UNIQUE NOT NULL,
   order_id VARCHAR(100),
   plan_id VARCHAR(20),
-  scans_added INTEGER,
-  amount INTEGER,
-  currency VARCHAR(5) DEFAULT 'INR',
+  plan_name VARCHAR(50),
+  scans_added INTEGER DEFAULT 0,
+  amount INTEGER NOT NULL,
+  currency VARCHAR(5) DEFAULT 'USD',
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
+  payment_provider VARCHAR(20) DEFAULT 'razorpay',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── REFERRALS TABLE ────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS referrals (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  referrer_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  referred_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  credits_awarded INTEGER DEFAULT 5,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ─── SCAN LOGS TABLE ────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS scan_logs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  action_type VARCHAR(50) NOT NULL,
-  scans_used INTEGER DEFAULT 1,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ─── PROCESSED PAYMENTS (Idempotency) ─────────────────────────────────────────
+-- ─── PROCESSED PAYMENTS (Idempotency) ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS processed_payments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   payment_id VARCHAR(100) UNIQUE NOT NULL,
@@ -74,7 +192,37 @@ CREATE TABLE IF NOT EXISTS processed_payments (
   processed_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── ADMIN AUDIT LOGS ──────────────────────────────────────────────────────────
+-- ─── REFERRALS ────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS referrals (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  referrer_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  referred_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  credits_awarded INTEGER DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── SCAN LOGS ────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS scan_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  action_type VARCHAR(50) NOT NULL,
+  scans_used INTEGER DEFAULT 1,
+  credits_remaining INTEGER,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── RATE LIMITS ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS rate_limits (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  endpoint VARCHAR(100) NOT NULL,
+  request_count INTEGER DEFAULT 1,
+  window_start TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, endpoint)
+);
+
+-- ─── ADMIN AUDIT LOGS ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS admin_audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   admin_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
@@ -85,173 +233,185 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── RATE LIMITING TABLE ────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS rate_limits (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  endpoint VARCHAR(100) NOT NULL,
-  request_count INTEGER DEFAULT 1,
-  window_start TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, endpoint)
-);
-
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- RPC FUNCTIONS (Atomic Operations)
 -- ═══════════════════════════════════════════════════════════════════════════════
 
--- ─── Atomic RPC: Add Scans ──────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION add_scans(p_user_id UUID, p_amount INTEGER)
-RETURNS JSONB AS $$
-BEGIN
-  UPDATE profiles
-  SET scans = scans + p_amount,
-      updated_at = NOW()
-  WHERE id = p_user_id
-  RETURNING jsonb_build_object('success', true, 'new_scans', scans);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- ─── Atomic RPC: Deduct Scans (Race-condition safe) ────────────────────────────
-CREATE OR REPLACE FUNCTION deduct_scan(p_user_id UUID, p_amount INTEGER)
+-- ─── Atomic: Deduct Scan (Race-condition safe) ────────────────────────────────
+CREATE OR REPLACE FUNCTION deduct_scan(p_user_id UUID, p_amount INTEGER DEFAULT 1)
 RETURNS JSONB AS $$
 DECLARE
   current_scans INTEGER;
   result JSONB;
 BEGIN
-  -- Validate input
   IF p_amount IS NULL OR p_amount <= 0 THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Invalid action', 'code', 'INVALID_AMOUNT');
+    RETURN jsonb_build_object('success', false, 'error', 'Invalid scan amount', 'code', 'INVALID_AMOUNT');
   END IF;
 
-  -- Get current scans with row lock to prevent race conditions
   SELECT scans INTO current_scans
   FROM profiles
   WHERE id = p_user_id
   FOR UPDATE;
 
-  -- Check if user exists
   IF current_scans IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'User not found', 'code', 'USER_NOT_FOUND');
   END IF;
 
-  -- Check if enough scans
   IF current_scans < p_amount THEN
     RETURN jsonb_build_object(
       'success', false,
       'error', 'Insufficient scans',
       'code', 'INSUFFICIENT_SCANS',
-      'current_scans', current_scans
+      'current_scans', current_scans,
+      'required', p_amount
     );
   END IF;
 
-  -- Deduct scans atomically
   UPDATE profiles
   SET scans = scans - p_amount,
       updated_at = NOW()
   WHERE id = p_user_id
   RETURNING jsonb_build_object('success', true, 'new_scans', scans) INTO result;
 
+  -- Log the deduction
+  INSERT INTO scan_logs (user_id, action_type, scans_used, credits_remaining)
+  VALUES (p_user_id, 'ai_action', p_amount, (SELECT scans FROM profiles WHERE id = p_user_id));
+
   RETURN result;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- ─── Atomic RPC: Check and Deduct Scans ────────────────────────────────────────
-CREATE OR REPLACE FUNCTION check_and_deduct_scan(p_user_id UUID, p_amount INTEGER)
+-- ─── Atomic: Add Scans ───────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION add_scans(p_user_id UUID, p_amount INTEGER, p_action VARCHAR(50) DEFAULT 'purchase')
 RETURNS JSONB AS $$
-DECLARE
-  result JSONB;
 BEGIN
-  SELECT deduct_scan(p_user_id, p_amount) INTO result;
-  RETURN result;
+  IF p_amount IS NULL OR p_amount <= 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Invalid scan amount');
+  END IF;
+
+  UPDATE profiles
+  SET scans = scans + p_amount,
+      updated_at = NOW()
+  WHERE id = p_user_id
+  RETURNING jsonb_build_object('success', true, 'new_scans', scans);
+
+  INSERT INTO scan_logs (user_id, action_type, scans_used, credits_remaining)
+  VALUES (p_user_id, p_action, p_amount, (SELECT scans FROM profiles WHERE id = p_user_id));
+
+  RETURN (SELECT jsonb_build_object('success', true, 'new_scans', scans) FROM profiles WHERE id = p_user_id);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- ─── RPC: Record Payment (Idempotent) ─────────────────────────────────────────
+-- ─── Atomic: Record Payment (Idempotent) ─────────────────────────────────────
 CREATE OR REPLACE FUNCTION record_payment(
   p_payment_id VARCHAR(100),
   p_user_id UUID,
   p_order_id VARCHAR(100),
   p_plan_id VARCHAR(20),
+  p_plan_name VARCHAR(50),
   p_scans_added INTEGER,
   p_amount INTEGER,
-  p_currency VARCHAR(5) DEFAULT 'INR'
+  p_currency VARCHAR(5) DEFAULT 'USD'
 )
 RETURNS JSONB AS $$
 DECLARE
   existing_payment UUID;
 BEGIN
-  -- Check if already processed (idempotency)
-  SELECT id INTO existing_payment
-  FROM processed_payments
-  WHERE payment_id = p_payment_id;
-
+  -- Idempotency check
+  SELECT id INTO existing_payment FROM processed_payments WHERE payment_id = p_payment_id;
   IF existing_payment IS NOT NULL THEN
     RETURN jsonb_build_object('success', false, 'already_processed', true, 'message', 'Payment already recorded');
   END IF;
 
-  -- Record the payment
-  INSERT INTO payment_transactions (user_id, payment_id, order_id, plan_id, scans_added, amount, currency, status)
-  VALUES (p_user_id, p_payment_id, p_order_id, p_plan_id, p_scans_added, p_amount, p_currency, 'completed');
+  -- Record transaction
+  INSERT INTO payment_transactions (user_id, payment_id, order_id, plan_id, plan_name, scans_added, amount, currency, status)
+  VALUES (p_user_id, p_payment_id, p_order_id, p_plan_id, p_plan_name, p_scans_added, p_amount, p_currency, 'completed');
 
   -- Mark as processed
-  INSERT INTO processed_payments (payment_id, user_id)
-  VALUES (p_payment_id, p_user_id);
+  INSERT INTO processed_payments (payment_id, user_id) VALUES (p_payment_id, p_user_id);
 
-  -- Add scans to user
-  UPDATE profiles
-  SET scans = scans + p_scans_added,
-      plan = COALESCE(NULLIF(p_plan_id, ''), plan),
-      updated_at = NOW()
-  WHERE id = p_user_id;
+  -- Add scans
+  UPDATE profiles SET scans = scans + p_scans_added, plan = p_plan_id, updated_at = NOW() WHERE id = p_user_id;
 
-  RETURN jsonb_build_object('success', true, 'message', 'Payment recorded successfully');
+  -- Award referral credits if applicable
+  UPDATE profiles SET scans = scans + 1 WHERE id = p_user_id;
+
+  RETURN jsonb_build_object('success', true, 'message', 'Payment recorded', 'new_scans', (SELECT scans FROM profiles WHERE id = p_user_id));
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- ─── RPC: Rate Limit Check ───────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION check_rate_limit(p_user_id UUID, p_endpoint VARCHAR(100), p_max_requests INTEGER DEFAULT 10, p_window_seconds INTEGER DEFAULT 60)
+-- ─── Rate Limit Check ─────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION check_rate_limit(
+  p_user_id UUID,
+  p_endpoint VARCHAR(100),
+  p_max_requests INTEGER DEFAULT 10,
+  p_window_seconds INTEGER DEFAULT 60
+)
 RETURNS JSONB AS $$
 DECLARE
   current_count INTEGER;
   window_start TIMESTAMPTZ;
-  result JSONB;
 BEGIN
-  -- Get current state
   SELECT request_count, window_start INTO current_count, window_start
   FROM rate_limits
   WHERE user_id = p_user_id AND endpoint = p_endpoint
   FOR UPDATE;
 
-  -- Check if window has expired
+  -- Reset if window expired
   IF window_start IS NOT NULL AND window_start < NOW() - (p_window_seconds || ' seconds')::INTERVAL THEN
-    -- Reset window
     DELETE FROM rate_limits WHERE user_id = p_user_id AND endpoint = p_endpoint;
-    INSERT INTO rate_limits (user_id, endpoint, request_count, window_start)
-    VALUES (p_user_id, p_endpoint, 1, NOW())
-    RETURNING jsonb_build_object('allowed', true, 'remaining', p_max_requests - 1) INTO result;
-    RETURN result;
+    INSERT INTO rate_limits (user_id, endpoint, request_count, window_start) VALUES (p_user_id, p_endpoint, 1, NOW());
+    RETURN jsonb_build_object('allowed', true, 'remaining', p_max_requests - 1);
   END IF;
 
-  -- Check if limit exceeded
+  -- Check limit
   IF current_count >= p_max_requests THEN
     RETURN jsonb_build_object('allowed', false, 'error', 'Rate limit exceeded', 'retry_after', p_window_seconds);
   END IF;
 
-  -- Increment counter
+  -- Increment
   IF current_count IS NULL THEN
-    INSERT INTO rate_limits (user_id, endpoint, request_count, window_start)
-    VALUES (p_user_id, p_endpoint, 1, NOW());
+    INSERT INTO rate_limits (user_id, endpoint, request_count, window_start) VALUES (p_user_id, p_endpoint, 1, NOW());
   ELSE
-    UPDATE rate_limits
-    SET request_count = request_count + 1
-    WHERE user_id = p_user_id AND endpoint = p_endpoint;
+    UPDATE rate_limits SET request_count = request_count + 1 WHERE user_id = p_user_id AND endpoint = p_endpoint;
   END IF;
 
   RETURN jsonb_build_object('allowed', true, 'remaining', p_max_requests - current_count - 1);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- ─── RPC: Admin Audit Log ────────────────────────────────────────────────────────
+-- ─── Admin: Update User ───────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION admin_update_user(
+  p_admin_id UUID,
+  p_target_user_id UUID,
+  p_scan_adjustment INTEGER DEFAULT NULL,
+  p_new_plan VARCHAR(20) DEFAULT NULL,
+  p_new_role VARCHAR(20) DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+  is_admin BOOLEAN;
+BEGIN
+  SELECT role = 'admin' INTO is_admin FROM profiles WHERE id = p_admin_id;
+  IF NOT is_admin THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
+  END IF;
+
+  IF p_scan_adjustment IS NOT NULL THEN
+    UPDATE profiles SET scans = GREATEST(0, scans + p_scan_adjustment), updated_at = NOW() WHERE id = p_target_user_id;
+  END IF;
+  IF p_new_plan IS NOT NULL THEN
+    UPDATE profiles SET plan = p_new_plan, updated_at = NOW() WHERE id = p_target_user_id;
+  END IF;
+  IF p_new_role IS NOT NULL THEN
+    UPDATE profiles SET role = p_new_role, updated_at = NOW() WHERE id = p_target_user_id;
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'message', 'User updated');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ─── Admin: Audit Log ────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION admin_log_action(
   p_admin_id UUID,
   p_action VARCHAR(100),
@@ -266,66 +426,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- ─── RPC: Safe Admin User Update ────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION admin_update_user(
-  p_admin_id UUID,
-  p_target_user_id UUID,
-  p_scan_adjustment INTEGER DEFAULT NULL,
-  p_new_plan VARCHAR(20) DEFAULT NULL,
-  p_new_role VARCHAR(20) DEFAULT NULL
-)
-RETURNS JSONB AS $$
-DECLARE
-  is_admin BOOLEAN;
-  result JSONB := jsonb_build_object('success', false);
-BEGIN
-  -- Verify admin role
-  SELECT role = 'admin' INTO is_admin FROM profiles WHERE id = p_admin_id;
-
-  IF NOT is_admin THEN
-    -- Log unauthorized attempt
-    PERFORM admin_log_action(p_admin_id, 'UNAUTHORIZED_ADMIN_ATTEMPT', p_target_user_id,
-      jsonb_build_object('attempted_action', 'admin_update_user'));
-    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized - admin role required');
-  END IF;
-
-  -- Apply updates
-  IF p_scan_adjustment IS NOT NULL THEN
-    UPDATE profiles
-    SET scans = GREATEST(0, scans + p_scan_adjustment),
-        updated_at = NOW()
-    WHERE id = p_target_user_id;
-  END IF;
-
-  IF p_new_plan IS NOT NULL THEN
-    UPDATE profiles
-    SET plan = p_new_plan,
-        updated_at = NOW()
-    WHERE id = p_target_user_id;
-  END IF;
-
-  IF p_new_role IS NOT NULL THEN
-    UPDATE profiles
-    SET role = p_new_role,
-        updated_at = NOW()
-    WHERE id = p_target_user_id;
-  END IF;
-
-  -- Log successful action
-  PERFORM admin_log_action(p_admin_id, 'USER_UPDATE', p_target_user_id,
-    jsonb_build_object('scan_adjustment', p_scan_adjustment, 'new_plan', p_new_plan, 'new_role', p_new_role));
-
-  RETURN jsonb_build_object('success', true, 'message', 'User updated successfully');
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- ═══════════════════════════════════════════════════════════════════════════════
--- ROW LEVEL SECURITY (RLS) POLICIES
+-- ROW LEVEL SECURITY (RLS)
 -- ═══════════════════════════════════════════════════════════════════════════════
 
--- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE resumes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE master_resumes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tailored_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE match_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE niche_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE export_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payment_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
@@ -333,109 +443,83 @@ ALTER TABLE processed_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
 
--- ─── PROFILES RLS ──────────────────────────────────────────────────────────────
-DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
-
+-- Profiles
 CREATE POLICY "profiles_select_own" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "profiles_update_own" ON profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "profiles_admin_all" ON profiles FOR ALL USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
 
--- Admin can view all profiles
-CREATE POLICY "profiles_admin_select" ON profiles FOR SELECT
-  USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+-- Master Resumes
+CREATE POLICY "master_resumes_own" ON master_resumes FOR ALL USING (auth.uid() = user_id);
 
--- ─── RESUMES RLS ────────────────────────────────────────────────────────────────
-DROP POLICY IF EXISTS "Users can view own resumes" ON resumes;
-DROP POLICY IF EXISTS "Users can insert own resumes" ON resumes;
-DROP POLICY IF EXISTS "Users can update own resumes" ON resumes;
-DROP POLICY IF EXISTS "Users can delete own resumes" ON resumes;
+-- Tailored Versions
+CREATE POLICY "tailored_versions_own" ON tailored_versions FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "resumes_select_own" ON resumes FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "resumes_insert_own" ON resumes FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "resumes_update_own" ON resumes FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "resumes_delete_own" ON resumes FOR DELETE USING (auth.uid() = user_id);
+-- Match Reports
+CREATE POLICY "match_reports_own" ON match_reports FOR ALL USING (auth.uid() = user_id);
 
--- ─── PAYMENT TRANSACTIONS RLS ──────────────────────────────────────────────────
-DROP POLICY IF EXISTS "Users can view own transactions" ON payment_transactions;
-DROP POLICY IF EXISTS "Service can insert transactions" ON payment_transactions;
+-- Niche Templates (public read, admin write)
+CREATE POLICY "niche_templates_public" ON niche_templates FOR SELECT USING (true);
+CREATE POLICY "niche_templates_admin" ON niche_templates FOR ALL USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
 
-CREATE POLICY "transactions_select_own" ON payment_transactions FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "transactions_service_insert" ON payment_transactions FOR INSERT WITH CHECK (true);
+-- Export History
+CREATE POLICY "export_history_own" ON export_history FOR ALL USING (auth.uid() = user_id);
 
--- Admin can view all transactions
-CREATE POLICY "transactions_admin_select" ON payment_transactions FOR SELECT
-  USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+-- Payment Transactions
+CREATE POLICY "transactions_own" ON payment_transactions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "transactions_admin" ON payment_transactions FOR SELECT USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "transactions_insert_service" ON payment_transactions FOR INSERT WITH CHECK (true);
 
--- ─── SCAN LOGS RLS ──────────────────────────────────────────────────────────────
-DROP POLICY IF EXISTS "Users can view own scan logs" ON scan_logs;
-DROP POLICY IF EXISTS "Service can insert scan logs" ON scan_logs;
+-- Scan Logs
+CREATE POLICY "scan_logs_own" ON scan_logs FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "scan_logs_admin" ON scan_logs FOR SELECT USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
 
-CREATE POLICY "scanlogs_select_own" ON scan_logs FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "scanlogs_service_insert" ON scan_logs FOR INSERT WITH CHECK (true);
-
--- Admin can view all scan logs
-CREATE POLICY "scanlogs_admin_select" ON scan_logs FOR SELECT
-  USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
-
--- ─── ADMIN AUDIT LOGS RLS ───────────────────────────────────────────────────────
--- Only admins can view audit logs, and only their own actions
-CREATE POLICY "aditlogs_admin_only" ON admin_audit_logs FOR SELECT
-  USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
-
--- Service role can insert (for automatic logging)
-CREATE POLICY "aditlogs_service_insert" ON admin_audit_logs FOR INSERT WITH CHECK (true);
-
--- ─── PROCESSED PAYMENTS RLS ────────────────────────────────────────────────────
-CREATE POLICY "processed_payments_service" ON processed_payments FOR ALL
-  USING (true);  -- Service role only
-
--- ─── RATE LIMITS RLS ───────────────────────────────────────────────────────────
+-- Rate Limits
 CREATE POLICY "rate_limits_own" ON rate_limits FOR ALL USING (auth.uid() = user_id);
+
+-- Admin Audit Logs
+CREATE POLICY "audit_logs_admin" ON admin_audit_logs FOR SELECT USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+
+-- Processed Payments (service role only)
+CREATE POLICY "processed_payments_service" ON processed_payments FOR ALL USING (true);
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- INDEXES
 -- ═══════════════════════════════════════════════════════════════════════════════
 
-CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);
-CREATE INDEX IF NOT EXISTS idx_profiles_referral_code ON profiles(referral_code);
-CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 CREATE INDEX IF NOT EXISTS idx_profiles_plan ON profiles(plan);
-CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
-CREATE INDEX IF NOT EXISTS idx_resumes_ats_score ON resumes(ats_score);
-CREATE INDEX IF NOT EXISTS idx_scan_logs_user_id ON scan_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_scan_logs_created_at ON scan_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_scan_logs_action_type ON scan_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_referral_code ON profiles(referral_code);
+CREATE INDEX IF NOT EXISTS idx_master_resumes_user_id ON master_resumes(user_id);
+CREATE INDEX IF NOT EXISTS idx_master_resumes_primary ON master_resumes(user_id, is_primary);
+CREATE INDEX IF NOT EXISTS idx_tailored_versions_user_id ON tailored_versions(user_id);
+CREATE INDEX IF NOT EXISTS idx_tailored_versions_master_id ON tailored_versions(master_resume_id);
+CREATE INDEX IF NOT EXISTS idx_tailored_versions_match_score ON tailored_versions(match_score);
+CREATE INDEX IF NOT EXISTS idx_tailored_versions_status ON tailored_versions(status);
+CREATE INDEX IF NOT EXISTS idx_match_reports_user_id ON match_reports(user_id);
+CREATE INDEX IF NOT EXISTS idx_match_reports_tailored_id ON match_reports(tailored_version_id);
+CREATE INDEX IF NOT EXISTS idx_niche_templates_niche ON niche_templates(niche);
+CREATE INDEX IF NOT EXISTS idx_export_history_user_id ON export_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_user_id ON payment_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_payment_id ON payment_transactions(payment_id);
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_status ON payment_transactions(status);
-CREATE INDEX IF NOT EXISTS idx_payment_transactions_created_at ON payment_transactions(created_at);
-CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_id ON admin_audit_logs(admin_id);
-CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_target_user_id ON admin_audit_logs(target_user_id);
-CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_scan_logs_user_id ON scan_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_scan_logs_created_at ON scan_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_user_endpoint ON rate_limits(user_id, endpoint);
-CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
 
--- ─── INTERVIEW SESSIONS TABLE (Persistent multi-turn interview) ──────────────────
-CREATE TABLE IF NOT EXISTS interview_sessions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  session_id VARCHAR(100) UNIQUE NOT NULL,
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  job_title VARCHAR(100) DEFAULT 'Software Engineer',
-  resume_text TEXT,
-  question_count INTEGER DEFAULT 0,
-  answers TEXT[] DEFAULT '{}',
-  status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'expired')),
-  started_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  completed_at TIMESTAMPTZ
-);
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- TRIGGER: Auto-update updated_at
+-- ═══════════════════════════════════════════════════════════════════════════════
 
-CREATE INDEX IF NOT EXISTS idx_interview_sessions_user_id ON interview_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_interview_sessions_session_id ON interview_sessions(session_id);
-CREATE INDEX IF NOT EXISTS idx_interview_sessions_status ON interview_sessions(status);
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- RLS for interview_sessions
-ALTER TABLE interview_sessions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "interview_sessions_own" ON interview_sessions FOR ALL USING (auth.uid() = user_id);
+CREATE TRIGGER profiles_updated_at BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER master_resumes_updated_at BEFORE UPDATE ON master_resumes FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER tailored_versions_updated_at BEFORE UPDATE ON tailored_versions FOR EACH ROW EXECUTE FUNCTION update_updated_at();

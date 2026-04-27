@@ -1,89 +1,118 @@
+/**
+ * POST /api/ai/analyze
+ * JD Match Analysis — free preview (no scan deduction)
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
 import { aiRouter } from '@/lib/ai-router'
+import { z } from 'zod'
+import { AIMatchRequest } from '@/lib/ai-router'
 
-const SCAN_COST = 1
-
-async function extractTextFromFile(file: File): Promise<string> {
-  const buffer = Buffer.from(await file.arrayBuffer())
-  if (file.type === 'application/pdf') {
-    const pdfParse = await import('pdf-parse')
-    const parsed = await pdfParse.default(buffer)
-    return parsed.text
-  }
-  const mammoth = await import('mammoth')
-  const result = await mammoth.extractRawText({ buffer })
-  return result.value
-}
+const zAnalyze = z.object({
+  masterResumeId: z.string().uuid().optional(),
+  resumeData: z.object({
+    summary: z.string().optional(),
+    experience: z.array(z.object({
+      title: z.string(),
+      company: z.string(),
+      bullets: z.array(z.string()),
+    })).optional(),
+    skills: z.array(z.string()),
+    certifications: z.array(z.string()).optional(),
+  }).optional(),
+  jobDescription: z.string().min(100, 'Job description must be at least 100 characters'),
+  niche: z.enum(['general', 'cybersecurity', 'nursing', 'skilled_trades', 'creative_tech']),
+})
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
-    const userId = formData.get('userId') as string
-
-    if (!file || !userId) {
-      return NextResponse.json({ success: false, error: 'Missing file or userId' }, { status: 400 })
+    // ─── Auth ────────────────────────────────────────────────────────────────
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'UNAUTHORIZED', message: 'Login required' }, { status: 401 })
     }
 
-    // ─── RATE LIMITING ───────────────────────────────────────────────────────────
-    const rateLimit = await checkRateLimit(userId, 'analyze', 10, 60)
+    // ─── Parse & Validate ────────────────────────────────────────────────────
+    const body = await request.json()
+    const parsed = zAnalyze.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({
+        error: 'VALIDATION_ERROR',
+        message: parsed.error.errors[0]?.message ?? 'Invalid input',
+        details: parsed.error.errors,
+      }, { status: 400 })
+    }
+
+    const { masterResumeId, resumeData, jobDescription, niche } = parsed.data
+
+    // ─── Rate Limit ──────────────────────────────────────────────────────────
+    const rateLimit = await checkRateLimit(user.id, 'ai_analyze', 10, 60)
     if (!rateLimit?.success) {
-      return rateLimitExceededResponse(rateLimit?.retryAfter || 60)
+      return rateLimitExceededResponse(rateLimit?.retryAfter ?? 60)
     }
 
-    const supabase = await createAdminClient()
+    // ─── Get Resume Data ─────────────────────────────────────────────────────
+    let resume = resumeData
 
-    // ─── ATOMIC SCAN DEDUCTION using RPC ─────────────────────────────────────────
-    const { data: deductResult, error: deductError } = await supabase
-      .rpc('deduct_scan', { p_user_id: userId, p_amount: SCAN_COST })
+    if (!resume && masterResumeId) {
+      const { data: master, error } = await supabase
+        .from('master_resumes')
+        .select('professional_summary, experience, skills, certifications')
+        .eq('id', masterResumeId)
+        .eq('user_id', user.id)
+        .single()
 
-    if (deductError) {
-      return NextResponse.json({ success: false, error: 'Database error during scan deduction' }, { status: 500 })
-    }
-
-    const parsedResult = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult
-
-    if (!parsedResult.success) {
-      const errorMsg = parsedResult.error || 'Unknown error'
-      if (errorMsg === 'Insufficient scans') {
-        return NextResponse.json({ success: false, error: 'Not enough scans' }, { status: 402 })
+      if (error || !master) {
+        return NextResponse.json({ error: 'NOT_FOUND', message: 'Master resume not found' }, { status: 404 })
       }
-      return NextResponse.json({ success: false, error: errorMsg }, { status: 400 })
+
+      resume = {
+        summary: master.professional_summary ?? undefined,
+        experience: (master.experience ?? []).map((e: any) => ({
+          title: e.title ?? '',
+          company: e.company ?? '',
+          bullets: e.bullets ?? [],
+        })),
+        skills: master.skills ?? [],
+        certifications: master.certifications ?? [],
+      }
     }
 
-    // ─── Extract resume text ─────────────────────────────────────────────────────
-    const resumeText = await extractTextFromFile(file)
-
-    // ─── Call AI Brain ──────────────────────────────────────────────────────────
-    const aiResult = await aiRouter({
-      mode: 'resume',
-      userId,
-      resumeText,
-    })
-
-    if (!aiResult.success) {
-      // Refund scan on AI failure
-      await supabase.rpc('add_scans', { p_user_id: userId, p_amount: SCAN_COST })
-      return NextResponse.json({ success: false, error: aiResult.error }, { status: 500 })
+    if (!resume) {
+      return NextResponse.json({ error: 'BAD_REQUEST', message: 'Provide resumeData or masterResumeId' }, { status: 400 })
     }
 
-    // ─── Log the scan usage ───────────────────────────────────────────────────
-    await supabase.from('scan_logs').insert({
-      user_id: userId,
-      action_type: 'ats_analysis',
-      scans_used: SCAN_COST,
-      created_at: new Date().toISOString(),
-    })
+    // ─── Call AI ─────────────────────────────────────────────────────────────
+    const aiReq: AIMatchRequest = {
+      mode: 'match',
+      userId: user.id,
+      resume: {
+        summary: resume.summary,
+        experience: resume.experience ?? [],
+        skills: resume.skills ?? [],
+        certifications: resume.certifications,
+      },
+      jobDescription,
+      niche,
+    }
 
-    return NextResponse.json({
-      success: true,
-      data: aiResult.data,
-    })
+    const result = await aiRouter(aiReq)
 
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Analysis failed'
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    if (!result.success) {
+      return NextResponse.json({
+        success: false,
+        error: result.data.error ?? 'AI_ERROR',
+        message: result.data.message ?? 'Analysis failed. Please try again.',
+      }, { status: 502 })
+    }
+
+    return NextResponse.json({ success: true, data: result.data })
+
+  } catch (err) {
+    console.error('[/api/ai/analyze]', err)
+    return NextResponse.json({ error: 'INTERNAL_ERROR', message: 'Analysis failed' }, { status: 500 })
   }
 }

@@ -154,24 +154,7 @@ ${footer}
 </body></html>`
 }
 
-// ── AI Enhance ────────────────────────────────────────────────────────────────
-async function aiEnhanceSummary(data: ResumeData): Promise<string> {
-  const res = await fetch('/api/ai/build-resume', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ task: 'summary', data }),
-  })
-  const j = await res.json()
-  return j.result || data.summary
-}
-
-async function aiEnhanceBullets(company: string, role: string, raw: string[]): Promise<string[]> {
-  const res = await fetch('/api/ai/build-resume', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ task: 'bullets', company, role, bullets: raw }),
-  })
-  const j = await res.json()
-  return j.result || raw
-}
+// AI calls removed - using main AI flow via /api/ai/analyze and /api/ai/tailor
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function BuildResumePage() {
@@ -224,27 +207,7 @@ export default function BuildResumePage() {
     set('skills', [...data.skills, skillInput.trim()]); setSkillInput('')
   }
 
-  // AI enhance summary
-  const enhanceSummary = async () => {
-    setEnhancing('summary')
-    try {
-      const r = await aiEnhanceSummary(data)
-      set('summary', r); toast.success('Summary enhanced by AI!')
-    } catch { toast.error('AI enhancement failed') }
-    finally { setEnhancing(null) }
-  }
-
-  // AI enhance bullets
-  const enhanceBullets = async (workId: string) => {
-    const w = data.workExp.find(x => x.id === workId)
-    if (!w) return
-    setEnhancing(workId)
-    try {
-      const r = await aiEnhanceBullets(w.company, w.role, w.bullets)
-      updateWork(workId, 'bullets', r); toast.success('Bullets enhanced by AI!')
-    } catch { toast.error('AI enhancement failed') }
-    finally { setEnhancing(null) }
-  }
+  // AI enhance disabled - use main AI flow via /analyze and /tailor pages
 
   // Preview + Download
   const openPreview = (clean: boolean) => {
@@ -345,11 +308,6 @@ export default function BuildResumePage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold uppercase tracking-widest text-white/40">Professional Summary</label>
-                    <button onClick={enhanceSummary} disabled={!!enhancing}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-purple-400 hover:text-purple-300 disabled:opacity-40 transition-all">
-                      {enhancing === 'summary' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                      AI Enhance
-                    </button>
                   </div>
                   <textarea value={data.summary} onChange={e => set('summary', e.target.value)} rows={4}
                     placeholder="Results-driven software engineer with 3+ years of experience building scalable web applications..."
@@ -384,11 +342,6 @@ export default function BuildResumePage() {
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm font-bold text-white/60">Job {wi + 1}</p>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => enhanceBullets(w.id)} disabled={!!enhancing}
-                            className="flex items-center gap-1.5 text-xs font-semibold text-purple-400 hover:text-purple-300 disabled:opacity-40 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 transition-all">
-                            {enhancing === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                            AI Enhance Bullets
-                          </button>
                           <button onClick={() => removeWork(w.id)} className="p-1.5 rounded-lg hover:bg-red-500/15 text-white/30 hover:text-red-400 transition-all">
                             <Trash2 className="h-4 w-4" />
                           </button>
