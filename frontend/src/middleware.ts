@@ -40,6 +40,13 @@ export function middleware(request: NextRequest) {
   response.headers.set('x-user-currency', currency)
   response.headers.set('x-user-language', language)
 
+  // Also set as cookie for client-side access
+  response.cookies.set('craftly_currency', currency, {
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+    path: '/',
+    sameSite: 'lax',
+  })
+
   // Handle authentication redirects
   const { pathname } = request.nextUrl
 

@@ -168,6 +168,14 @@ export default function PricingPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  // Auto-detect currency from middleware headers
+  useEffect(() => {
+    const detectedCurrency = document.documentElement.getAttribute('data-currency') || 'INR'
+    if (detectedCurrency === 'USD' || detectedCurrency === 'INR') {
+      setCurrency(detectedCurrency)
+    }
+  }, [])
+
   // Founders deadline: 30 days from now
   const foundingDeadline = new Date()
   foundingDeadline.setDate(foundingDeadline.getDate() + 30)

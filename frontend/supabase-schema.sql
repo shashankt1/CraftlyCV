@@ -118,24 +118,35 @@ DECLARE
   current_scans INTEGER;
   result JSONB;
 BEGIN
+  -- Validate input
+  IF p_amount IS NULL OR p_amount <= 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Invalid action', 'code', 'INVALID_AMOUNT');
+  END IF;
+
   -- Get current scans with row lock to prevent race conditions
   SELECT scans INTO current_scans
   FROM profiles
   WHERE id = p_user_id
   FOR UPDATE;
 
-  -- Check if enough scans
+  -- Check if user exists
   IF current_scans IS NULL THEN
-    RETURN jsonb_build_object('success', false, 'error', 'User not found');
+    RETURN jsonb_build_object('success', false, 'error', 'User not found', 'code', 'USER_NOT_FOUND');
   END IF;
 
+  -- Check if enough scans
   IF current_scans < p_amount THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Insufficient scans', 'current_scans', current_scans);
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Insufficient scans',
+      'code', 'INSUFFICIENT_SCANS',
+      'current_scans', current_scans
+    );
   END IF;
 
   -- Deduct scans atomically
   UPDATE profiles
-  SET scans = GREATEST(0, scans - p_amount),
+  SET scans = scans - p_amount,
       updated_at = NOW()
   WHERE id = p_user_id
   RETURNING jsonb_build_object('success', true, 'new_scans', scans) INTO result;
