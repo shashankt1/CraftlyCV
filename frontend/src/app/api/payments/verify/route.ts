@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 
 // Server-side plan → price mapping (paisa)
 const PLAN_PRICES: Record<string, number> = {
@@ -23,27 +23,27 @@ const PLAN_SCANS: Record<string, number> = {
 
 export async function POST(request: NextRequest) {
   try {
+    // ─── Session Auth ───────────────────────────────────────────────────────────
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'UNAUTHORIZED', message: 'Login required' }, { status: 401 })
+    }
+
     const body = await request.json()
     const {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
       planId,
-      userId,
     } = body
+    const userId = user.id
 
     // ─── Input Validation ─────────────────────────────────────────────────────
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return NextResponse.json({
         error: 'MISSING_FIELDS',
         message: 'Payment information incomplete'
-      }, { status: 400 })
-    }
-
-    if (!userId) {
-      return NextResponse.json({
-        error: 'USER_REQUIRED',
-        message: 'User ID required'
       }, { status: 400 })
     }
 

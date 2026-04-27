@@ -55,20 +55,7 @@ export default function OnboardingPage() {
     setLoading(true)
 
     try {
-      // Check username availability
-      const { data: existing } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', username.toLowerCase())
-        .single()
-
-      if (existing) {
-        toast.error('Username is already taken')
-        setLoading(false)
-        return
-      }
-
-      // Update profile with onboarding data
+      // Update profile with onboarding data — unique constraint handles race conditions
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -81,30 +68,14 @@ export default function OnboardingPage() {
         .eq('id', userId)
 
       if (error) {
-        // Profile might not exist yet, try insert
-        if (error.code === 'PGRST116' || error.code === '22P02') {
-          const { error: insertError } = await supabase.from('profiles').upsert({
-            id: userId,
-            username: username.toLowerCase(),
-            plan: selectedPlan,
-            scans: 10,
-            referral_code: generateReferralCode(),
-            onboarding_completed: true,
-            onboarding_step: 2,
-            country: 'US',
-            language: 'en',
-            currency: 'USD',
-          })
-          if (insertError) {
-            toast.error('Failed to create profile: ' + insertError.message)
-            setLoading(false)
-            return
-          }
+        if (error.code === '23505') {
+          toast.error('Username is already taken. Please choose another.')
         } else {
-          toast.error('Failed to update profile: ' + error.message)
-          setLoading(false)
-          return
+          toast.error('Something went wrong. Please try again.')
+          console.error('Onboarding error:', error)
         }
+        setLoading(false)
+        return
       }
 
       toast.success('Welcome to CraftlyCV! You have 10 free scans.')

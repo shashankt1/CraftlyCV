@@ -1,21 +1,56 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { type NextRequest, NextResponse } from 'next/server'
 
-// Country to region mapping
 const SOUTH_ASIA = ['IN', 'BD', 'PK', 'NP', 'LK']
 const SOUTHEAST_ASIA = ['PH', 'ID', 'VN', 'MY', 'TH', 'SG']
 const EAST_ASIA = ['JP', 'KR', 'TW', 'HK']
 
-export function middleware(request: NextRequest) {
-  const response = NextResponse.next()
+const PROTECTED_ROUTES = [
+  '/dashboard',
+  '/build',
+  '/analyze',
+  '/tailor',
+  '/vault',
+  '/versions',
+  '/export',
+  '/billing',
+  '/settings',
+  '/interview',
+  '/mock-interview',
+  '/jobs',
+  '/linkedin',
+  '/career',
+  '/income',
+]
 
-  // Get country from headers (set by Vercel/hosting) or IP
-  const country = request.geo?.country ||
-                  request.headers.get('x-vercel-ip-country') ||
-                  request.headers.get('cf-ipcountry') ||
-                  'IN'
+export async function middleware(request: NextRequest) {
+  let response = NextResponse.next({ request: { headers: request.headers } })
 
-  // Determine region
+  // STEP A — Supabase session refresh (must be first)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({ request: { headers: request.headers } })
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
+  await supabase.auth.getUser()
+
+  // STEP B — Geo-detection
+  const country =
+    request.headers.get('x-vercel-ip-country') ||
+    request.headers.get('cf-ipcountry') ||
+    'IN'
+
   let region = 'global'
   let currency = 'USD'
   let language = 'en'
@@ -23,43 +58,32 @@ export function middleware(request: NextRequest) {
   if (SOUTH_ASIA.includes(country)) {
     region = 'india'
     currency = 'INR'
-    language = 'en'
   } else if (SOUTHEAST_ASIA.includes(country)) {
     region = 'southeast_asia'
     currency = 'USD'
-    language = 'en'
   } else if (EAST_ASIA.includes(country)) {
     region = 'east_asia'
     currency = country === 'JP' ? 'JPY' : country === 'KR' ? 'KRW' : 'USD'
     language = country === 'JP' ? 'ja' : country === 'KR' ? 'ko' : 'en'
   }
 
-  // Set custom headers for downstream use
   response.headers.set('x-user-country', country)
   response.headers.set('x-user-region', region)
   response.headers.set('x-user-currency', currency)
   response.headers.set('x-user-language', language)
 
-  // Also set as cookie for client-side access
   response.cookies.set('craftly_currency', currency, {
-    maxAge: 60 * 60 * 24 * 30, // 30 days
+    maxAge: 60 * 60 * 24 * 30,
     path: '/',
     sameSite: 'lax',
   })
 
-  // Handle authentication redirects
+  // STEP C — Auth redirect
   const { pathname } = request.nextUrl
-
-  // Protected routes that require auth
-  const protectedRoutes = ['/dashboard', '/build', '/analyze', '/tailor', '/interview', '/mock-interview', '/jobs', '/income', '/pricing', '/linkedin', '/career']
-  const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route))
-
-  // Check for Supabase auth cookie
+  const isProtectedRoute = PROTECTED_ROUTES.some(route => pathname.startsWith(route))
   const supabaseAuthCookie = request.cookies.get('sb-access-token') ||
-                             request.cookies.get('supabase-auth-token') ||
-                             request.cookies.getAll().find(c => c.name.includes('auth-token'))
+    request.cookies.getAll().find(c => c.name.includes('auth-token'))
 
-  // If accessing protected route without auth, redirect to auth
   if (isProtectedRoute && !supabaseAuthCookie) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth'
@@ -67,19 +91,15 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  if (pathname === '/auth' && supabaseAuthCookie) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    return NextResponse.redirect(url)
+  }
+
   return response
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     * - api routes (they handle their own auth)
-     */
-    '/((?!_next/static|_next/image|favicon.ico|public|api).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }

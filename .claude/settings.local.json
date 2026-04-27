@@ -9,7 +9,8 @@
       "Bash(grep -E \"src\\\\\\\\app\\\\\\\\\\\\\\(protected\\\\\\)\")",
       "Bash(grep -E \"src\\\\\\\\app\\\\\\\\\\\\\\(protected\\\\\\\\\\\\\\)\")",
       "Bash(grep -E \"^src\\\\\\\\app\\\\\\\\\\\\\\(api\\\\\\\\\\\\\\(ai\\\\\\\\\\\\\\(analyze|tailor\\\\\\)|versions|match|master-resume|scans\\)\")",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "WebFetch(domain:oprnmnprfdpinkfaempv.supabase.co)"
     ]
   }
 }

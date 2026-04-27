@@ -65,7 +65,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       if (!data) { router.push('/onboarding'); return }
 
       setProfile(data)
-      if (user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) setIsAdmin(true)
+      if (data?.role === 'admin') setIsAdmin(true)
       setLoading(false)
     }
     init()

@@ -29,12 +29,18 @@ export async function createClient() {
 // Admin client with service role key for server-side operations
 export async function createAdminClient() {
   const cookieStore = await cookies()
-  
+
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
+  if (!serviceRoleKey) {
+    throw new Error(
+      'SUPABASE_SERVICE_ROLE_KEY is not set. ' +
+      'Admin operations require the service role key.'
+    )
+  }
+
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    serviceRoleKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    serviceRoleKey,
     {
       cookies: {
         getAll() {
@@ -46,7 +52,7 @@ export async function createAdminClient() {
               cookieStore.set(name, value, options)
             )
           } catch {
-            // Handle errors in Server Components
+            // Server Component — cannot set cookies, ignore
           }
         },
       },
