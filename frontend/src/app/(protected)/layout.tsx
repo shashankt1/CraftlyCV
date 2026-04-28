@@ -335,7 +335,6 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           <aside className="absolute left-0 top-0 h-full w-72 bg-zinc-900 border-r border-zinc-800 p-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <Logo href="/dashboard" size="sm" onClick={() => setMobileOpen(false)} />
-              </Button>
             </div>
             <nav className="space-y-0.5">
               {NAV_ITEMS.map((item) => (
