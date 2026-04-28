@@ -1,24 +1,14 @@
 import { useMemo } from 'react'
-import { ats_analyzer, resume_tailoring, resume_vault_upload, pdf_export, dashboard_loading, mock_interview, job_tracker } from './loading-messages'
+import messagesData from './loading-messages.json'
 
-type Context = keyof typeof messages
-
-const messages = {
-  ats_analyzer,
-  resume_tailoring,
-  resume_vault_upload,
-  pdf_export,
-  dashboard_loading,
-  mock_interview,
-  job_tracker,
-} as const
+type Context = keyof typeof messagesData
 
 /**
  * Returns a random loading message for the given context.
  * Call this inside useMemo or useState if you want to pick once on mount.
  */
 export function getRandomMessage(context: Context): string {
-  const arr = messages[context]
+  const arr = messagesData[context] as string[]
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
