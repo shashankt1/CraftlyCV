@@ -22,10 +22,9 @@ export async function GET(request: Request) {
   const email = sessionData.user.email ?? ''
 
   try {
-    // Ensure profile exists using admin client
     const admin = await createAdminClient()
 
-    // Check if profile already exists
+    // Check if profile already exists (trigger may have already created it)
     const { data: existingProfile } = await admin
       .from('profiles')
       .select('id')
@@ -33,12 +32,15 @@ export async function GET(request: Request) {
       .single()
 
     if (!existingProfile) {
-      // Create profile - this MUST succeed
-      const username = email
+      // Trigger didn't fire or was too slow — create profile manually
+      const baseUsername = email
         .split('@')[0]
         .replace(/[^a-z0-9]/gi, '')
         .toLowerCase()
-        .slice(0, 20) || `user_${userId.slice(0, 8)}`
+        .slice(0, 12) || 'user'
+
+      const username = `${baseUsername}_${userId.slice(0, 6)}`
+      const referral_code = `${baseUsername.slice(0, 8)}_${userId.slice(0, 6)}`
 
       const { error: insertError } = await admin
         .from('profiles')
@@ -46,12 +48,18 @@ export async function GET(request: Request) {
           id: userId,
           email,
           username,
-          scans: 10,
+          full_name: sessionData.user.user_metadata?.full_name
+            || sessionData.user.user_metadata?.name
+            || null,
+          scans: 3,
           plan: 'free',
-          country: 'US',
+          role: 'user',
+          country: 'IN',
           language: 'en',
-          currency: 'USD',
-          referral_code: `${username}_${userId.slice(0, 4)}`,
+          currency: 'INR',
+          input_language: 'en',
+          output_language: 'en',
+          referral_code,
           onboarding_completed: false,
           onboarding_step: 0,
           experience_level: 'mid',
@@ -59,13 +67,49 @@ export async function GET(request: Request) {
         })
 
       if (insertError) {
-        // CRITICAL: If profile insert fails, we cannot proceed
-        console.error('CRITICAL - Profile creation failed:', insertError)
-        return NextResponse.redirect(`${origin}/auth?error=profile_create_failed`)
+        // 23505 = duplicate key — trigger created it between our check and insert
+        if (insertError.code === '23505') {
+          console.log('Profile already created by trigger — continuing')
+        } else {
+          console.error('CRITICAL - Profile creation failed:', insertError)
+          return NextResponse.redirect(`${origin}/auth?error=profile_create_failed`)
+        }
       }
     }
 
-    // Success - redirect to intended page
+    // Handle referral cookie
+    const refCookie = request.headers.get('cookie')
+      ?.split(';')
+      .find(c => c.trim().startsWith('craftly_ref='))
+      ?.split('=')[1]
+      ?.trim()
+
+    if (refCookie) {
+      try {
+        const { data: referrer } = await admin
+          .from('profiles')
+          .select('id')
+          .eq('referral_code', refCookie)
+          .single()
+
+        if (referrer && referrer.id !== userId) {
+          await admin
+            .from('profiles')
+            .update({ referred_by_code: refCookie })
+            .eq('id', userId)
+
+          await admin.from('referrals').insert({
+            referrer_id: referrer.id,
+            referred_id: userId,
+            referral_code: refCookie,
+            status: 'pending',
+          })
+        }
+      } catch (refErr) {
+        console.warn('Referral apply failed (non-blocking):', refErr)
+      }
+    }
+
     return NextResponse.redirect(`${origin}${next}`)
 
   } catch (err) {
