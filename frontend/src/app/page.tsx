@@ -1,741 +1,868 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
-import {
-  FileText, Zap, Target, Sparkles, MessageSquare, ArrowRight,
-  CheckCircle, TrendingUp, Award, Menu, X,
-  Briefcase, XCircle, Star, Clock, Mic, DollarSign, Search,
-  Users, Loader2, Upload, ChevronRight, Play, ExternalLink
-} from 'lucide-react'
+import { motion, useInView } from 'framer-motion'
+import { ArrowRight, Check, FileText, Zap, Shield, TrendingUp, Database, ChevronDown, BarChart3, Target, Search, FileOutput, Settings2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function useInView(ref: React.RefObject<Element>) {
-  const [inView, setInView] = useState(false)
-  useEffect(() => {
-    if (!ref.current) return
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setInView(true); obs.disconnect() } }, { threshold: 0.2 })
-    obs.observe(ref.current)
-    return () => obs.disconnect()
-  }, [])
-  return inView
+/* ═══════════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — "Quiet Confidence"
+   Restraint, editorial structure, no gimmicks, premium SaaS
+══════════════════════════════════════════════════════════════════════════════ */
+
+const COLORS = {
+  ink: '#0F1117',
+  surface: '#161A22',
+  surfaceRaised: '#1C2028',
+  border: '#2A2F3A',
+  borderLight: '#353B4A',
+  textPrimary: '#F1F3F5',
+  textSecondary: '#9CA3AF',
+  textMuted: '#6B7280',
+  accent: '#3D5A80',
+  accentLight: '#4A6FA5',
+  accentMuted: '#2C4270',
+  success: '#4ADE80',
+  warning: '#F59E0B',
+  error: '#F87171',
 }
 
-function Counter({ to, suffix = '', prefix = '' }: { to: number; suffix?: string; prefix?: string }) {
-  const [val, setVal] = useState(0)
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ANIMATION — Subtle, controlled, premium
+══════════════════════════════════════════════════════════════════════════════ */
+function useScrollReveal(delay = 0) {
   const ref = useRef<HTMLDivElement>(null)
-  const inView = useInView(ref as React.RefObject<Element>)
-  useEffect(() => {
-    if (!inView) return
-    let cur = 0
-    const step = to / 60
-    const iv = setInterval(() => {
-      cur = Math.min(cur + step, to)
-      setVal(Math.floor(cur))
-      if (cur >= to) clearInterval(iv)
-    }, 24)
-    return () => clearInterval(iv)
-  }, [inView, to])
-  return <div ref={ref}>{prefix}{val.toLocaleString()}{suffix}</div>
+  const inView = useInView(ref, { once: true, margin: '-60px' })
+  useEffect(() => { }, [inView])
+  return { ref }
 }
 
-// ── Career Story Animation ────────────────────────────────────────────────────
-const STORY_FRAMES = [
-  { icon: '🎓', label: 'Fresher', sub: '200+ applications sent', color: '#60a5fa', status: 'struggle' },
-  { icon: '📄', label: 'ATS Score: 34', sub: 'Filtered before human eyes', color: '#f87171', status: 'fail' },
-  { icon: '😔', label: '0 callbacks', sub: 'Something is clearly wrong', color: '#f87171', status: 'fail' },
-  { icon: '🔍', label: 'Found CraftlyCV', sub: 'Analyzed resume in 30 sec', color: '#fb923c', status: 'turning' },
-  { icon: '⚡', label: 'Score jumped to 87', sub: 'Applied all AI suggestions', color: '#34d399', status: 'win' },
-  { icon: '📞', label: '6 interview calls', sub: 'In the first two weeks', color: '#34d399', status: 'win' },
-  { icon: '🏆', label: 'Got the job!', sub: '₹18L offer at a startup', color: '#fbbf24', status: 'win' },
-]
+function Reveal({ delay = 0, children, className = '' }: {
+  delay?: number; children: React.ReactNode; className?: string
+}) {
+  const { ref } = useScrollReveal(delay)
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  )
+}
 
-function CareerStoryAnimation() {
-  const [frame, setFrame] = useState(0)
-  const [playing, setPlaying] = useState(true)
+function StaggerGroup({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <motion.div
+      className={className}
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once: true, margin: '-60px' }}
+      variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08 } } }}
+    >
+      {children}
+    </motion.div>
+  )
+}
 
+function StaggerItem({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <motion.div
+      className={className}
+      variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   NAV — Clean, minimal
+══════════════════════════════════════════════════════════════════════════════ */
+function Nav() {
+  const [scrolled, setScrolled] = useState(false)
   useEffect(() => {
-    if (!playing) return
-    const iv = setInterval(() => {
-      setFrame(f => {
-        if (f >= STORY_FRAMES.length - 1) { setPlaying(false); return f }
-        return f + 1
-      })
-    }, 1800)
-    return () => clearInterval(iv)
-  }, [playing])
-
-  const restart = () => { setFrame(0); setPlaying(true) }
-  const current = STORY_FRAMES[frame]
+    const onScroll = () => setScrolled(window.scrollY > 20)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   return (
-    <div className="relative w-full max-w-sm mx-auto select-none">
-      <div className="rounded-3xl p-8 text-center relative overflow-hidden transition-all duration-700"
-        style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${current.color}30`, backdropFilter: 'blur(20px)' }}>
-        <div className="absolute inset-0 opacity-10 transition-all duration-700"
-          style={{ background: `radial-gradient(circle at 50% 50%, ${current.color}, transparent 70%)` }} />
-        <div className="relative z-10">
-          <div className="text-6xl mb-4 transition-all duration-500" style={{ filter: `drop-shadow(0 0 20px ${current.color}60)` }}>
-            {current.icon}
+    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      scrolled ? 'bg-[#0F1117]/90 backdrop-blur-xl border-b border-[#2A2F3A]' : 'bg-transparent'
+    }`}>
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-[#3D5A80] flex items-center justify-center">
+            <FileText className="h-4 w-4 text-white" />
           </div>
-          <p className="text-2xl font-black text-white mb-2 transition-all">{current.label}</p>
-          <p className="text-sm font-medium" style={{ color: `${current.color}cc` }}>{current.sub}</p>
-          <div className="flex justify-center gap-2 mt-6">
-            {STORY_FRAMES.map((f, i) => (
-              <button key={i} onClick={() => { setFrame(i); setPlaying(false) }}
-                className="rounded-full transition-all duration-300"
-                style={{
-                  width: i === frame ? '20px' : '8px', height: '8px',
-                  background: i <= frame ? current.color : 'rgba(255,255,255,0.15)'
-                }} />
+          <span className="text-base font-semibold text-[#F1F3F5] tracking-tight">CraftlyCV</span>
+        </Link>
+        <div className="hidden md:flex items-center gap-1">
+          {[
+            { label: 'Analyzer', href: '/#analyzer' },
+            { label: 'Tailoring', href: '/#tailoring' },
+            { label: 'Vault', href: '/#vault' },
+            { label: 'Pricing', href: '/#pricing' },
+          ].map(item => (
+            <Link key={item.href} href={item.href}
+              className="px-4 py-2 text-sm text-[#9CA3AF] hover:text-[#F1F3F5] hover:bg-[#1C2028] rounded-lg transition-all duration-200">
+              {item.label}
+            </Link>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/auth" className="hidden sm:block text-sm text-[#9CA3AF] hover:text-[#F1F3F5] px-3 py-2 rounded-lg hover:bg-[#1C2028] transition-all">
+            Sign in
+          </Link>
+          <Link href="/auth"
+            className="text-sm font-medium px-4 py-2 rounded-lg bg-[#3D5A80] hover:bg-[#4A6FA5] text-white transition-colors">
+            Start free →
+          </Link>
+        </div>
+      </div>
+    </nav>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ATS SCORE RING
+══════════════════════════════════════════════════════════════════════════════ */
+function ATSScoreRing({ score = 78, size = 120 }: { score?: number; size?: number }) {
+  const radius = (size / 2) - 10
+  const circumference = 2 * Math.PI * radius
+  const scoreColor = score >= 80 ? COLORS.success : score >= 60 ? COLORS.warning : COLORS.error
+
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={COLORS.border} strokeWidth="8" />
+        <circle
+          cx={size/2} cy={size/2} r={radius} fill="none"
+          stroke={scoreColor} strokeWidth="8" strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference - (score / 100) * circumference}
+          style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(0.16, 1, 0.3, 1)' }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-bold text-[#F1F3F5]">{score}</span>
+        <span className="text-[9px] uppercase tracking-widest text-[#6B7280]">ATS Score</span>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   KEYWORD CHIP
+══════════════════════════════════════════════════════════════════════════════ */
+function KeywordChip({ word, pass }: { word: string; pass: boolean }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium border ${
+      pass ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400' : 'bg-red-500/10 border-red-500/25 text-red-400'
+    }`}>
+      {pass ? <Check className="h-3 w-3" /> : <span className="text-[9px]">✕</span>}
+      {word}
+    </span>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SECTION LABEL
+══════════════════════════════════════════════════════════════════════════════ */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-8 h-px bg-[#3D5A80]" />
+      <span className="text-[11px] uppercase tracking-widest font-semibold text-[#3D5A80]">{children}</span>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FEATURE LIST ITEM
+══════════════════════════════════════════════════════════════════════════════ */
+function FeatureListItem({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) {
+  return (
+    <div className="flex items-start gap-4 py-4 border-b border-[#2A2F3A] last:border-0">
+      <div className="w-9 h-9 rounded-lg bg-[#1C2028] border border-[#2A2F3A] flex items-center justify-center shrink-0 mt-0.5">
+        <Icon className="h-4 w-4 text-[#9CA3AF]" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-[#F1F3F5] mb-0.5">{title}</p>
+        <p className="text-sm text-[#6B7280] leading-relaxed">{desc}</p>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FAQ ITEM
+══════════════════════════════════════════════════════════════════════════════ */
+function FAQItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border-b border-[#2A2F3A]">
+      <button onClick={() => setOpen(!open)} className="w-full py-5 flex items-center justify-between text-left">
+        <span className="text-sm font-medium text-[#F1F3F5] pr-4">{q}</span>
+        <ChevronDown className={`h-4 w-4 text-[#6B7280] shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <p className="pb-5 text-sm text-[#9CA3AF] leading-relaxed">{a}</p>}
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PRODUCT CARD
+══════════════════════════════════════════════════════════════════════════════ */
+function ProductCard({ icon: Icon, label, title, desc }: { icon: any; label: string; title: string; desc: string }) {
+  return (
+    <div className="group p-6 rounded-xl bg-[#161A22] border border-[#2A2F3A] hover:border-[#3D5A80]/40 transition-all duration-300">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-8 h-8 rounded-lg bg-[#1C2028] border border-[#2A2F3A] flex items-center justify-center">
+          <Icon className="h-4 w-4 text-[#3D5A80]" />
+        </div>
+        <span className="text-[11px] uppercase tracking-widest text-[#6B7280]">{label}</span>
+      </div>
+      <h3 className="text-base font-semibold text-[#F1F3F5] mb-2">{title}</h3>
+      <p className="text-sm text-[#6B7280] leading-relaxed">{desc}</p>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PRICING CARD
+══════════════════════════════════════════════════════════════════════════════ */
+function PricingCard({ name, price, period, features, highlight, badge }: {
+  name: string; price: string; period: string; features: string[]; highlight?: boolean; badge?: string
+}) {
+  return (
+    <div className={`relative rounded-xl p-6 flex flex-col gap-5 ${
+      highlight ? 'bg-[#161A22] border border-[#3D5A80]/50' : 'bg-[#161A22] border border-[#2A2F3A]'
+    }`}>
+      {badge && (
+        <div className="absolute -top-3 left-6">
+          <Badge className="bg-[#3D5A80] text-white text-[10px] px-2.5 py-0.5 rounded-full">{badge}</Badge>
+        </div>
+      )}
+      <div>
+        <p className="text-[11px] uppercase tracking-widest text-[#6B7280] mb-2">{name}</p>
+        <div className="flex items-baseline gap-1">
+          <span className="text-4xl font-bold text-[#F1F3F5]">{price}</span>
+          <span className="text-sm text-[#6B7280]">{period}</span>
+        </div>
+      </div>
+      <ul className="space-y-2.5 flex-1">
+        {features.map(f => (
+          <li key={f} className="flex items-start gap-2.5 text-sm text-[#9CA3AF]">
+            <Check className="h-4 w-4 text-[#4ADE80] flex-shrink-0 mt-0.5" />
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
+      <Button
+        variant={highlight ? 'default' : 'outline'}
+        size="lg"
+        className={`w-full ${highlight ? 'bg-[#3D5A80] hover:bg-[#4A6FA5] text-white' : 'border-[#2A2F3A] text-[#9CA3AF] hover:bg-[#1C2028]'}`}
+      >
+        {name === 'Free' ? 'Start free' : name === 'Pro' ? 'Get Pro' : 'Get Lifetime'}
+      </Button>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   TESTIMONIAL BLOCK
+══════════════════════════════════════════════════════════════════════════════ */
+function TestimonialBlock({ quote, name, role, score }: { quote: string; name: string; role: string; score?: string }) {
+  return (
+    <div className="py-6 border-b border-[#2A2F3A] last:border-0">
+      {score && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-2xl font-bold text-[#3D5A80]">{score}</span>
+          <span className="text-xs text-[#6B7280] uppercase tracking-widest">ATS score jump</span>
+        </div>
+      )}
+      <blockquote className="text-base text-[#F1F3F5] leading-relaxed mb-3 italic">"{quote}"</blockquote>
+      <div>
+        <p className="text-sm font-medium text-[#9CA3AF]">{name}</p>
+        <p className="text-xs text-[#6B7280]">{role}</p>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ATS ANALYZER PREVIEW — Signature product surface
+══════════════════════════════════════════════════════════════════════════════ */
+function ATSAnalyzerPreview() {
+  return (
+    <div className="rounded-xl bg-[#161A22] border border-[#2A2F3A] overflow-hidden">
+      <div className="flex items-center gap-2 px-5 py-4 border-b border-[#2A2F3A]">
+        <div className="w-3 h-3 rounded-full bg-[#2A2F3A]" />
+        <div className="w-3 h-3 rounded-full bg-[#2A2F3A]" />
+        <div className="w-3 h-3 rounded-full bg-[#3D5A80]" />
+        <span className="ml-3 text-xs text-[#6B7280] font-mono">craftlycv.in/analyze</span>
+      </div>
+      <div className="p-6 space-y-5">
+        <div className="flex items-start gap-5">
+          <ATSScoreRing score={58} size={110} />
+          <div className="flex-1 pt-2 space-y-3">
+            {[
+              { label: 'Keyword match', value: 58, pass: false },
+              { label: 'Format compliance', value: 84, pass: true },
+              { label: 'Bullet structure', value: 41, pass: false },
+            ].map(item => (
+              <div key={item.label}>
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-[#6B7280]">{item.label}</span>
+                  <span className={`font-medium ${item.pass ? 'text-emerald-400' : 'text-red-400'}`}>{item.value}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[#1C2028] overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ${item.pass ? 'bg-emerald-500' : 'bg-red-500/80'}`}
+                    style={{ width: `${item.value}%` }}
+                  />
+                </div>
+              </div>
             ))}
           </div>
-          {!playing && frame === STORY_FRAMES.length - 1 && (
-            <button onClick={restart}
-              className="mt-5 text-xs font-semibold px-4 py-2 rounded-full transition-all hover:scale-105"
-              style={{ background: `${current.color}20`, color: current.color, border: `1px solid ${current.color}40` }}>
-              ↺ Watch again
-            </button>
-          )}
         </div>
-      </div>
-      <div className="absolute -left-3 top-1/2 -translate-y-1/2 space-y-2">
-        {['struggle', 'fail', 'fail', 'turning', 'win', 'win', 'win'].slice(0, frame + 1).map((s, i) => (
-          <div key={i} className="w-2 h-2 rounded-full transition-all"
-            style={{ background: s === 'win' ? '#34d399' : s === 'turning' ? '#fb923c' : '#f87171' }} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Live Activity Ticker ──────────────────────────────────────────────────────
-const ACTIVITIES = [
-  'Rahul from Bangalore scored 91 on ATS ⚡',
-  'Priya landed a job at Flipkart 🎉',
-  'Arjun improved his score from 52 → 84 📈',
-  'Sneha got 4 interview calls this week 📞',
-  'Vikram tailored his resume in 30 seconds ⚡',
-  'Anjali switched to Data Science role 🚀',
-  'Rohan from Delhi got into Amazon 🏆',
-  'Meera earned ₹15K on Upwork this month 💰',
-]
-
-function LiveTicker() {
-  const [idx, setIdx] = useState(0)
-  const [visible, setVisible] = useState(true)
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setVisible(false)
-      setTimeout(() => { setIdx(i => (i + 1) % ACTIVITIES.length); setVisible(true) }, 400)
-    }, 3000)
-    return () => clearInterval(iv)
-  }, [])
-  return (
-    <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 px-5 py-3 rounded-full">
-      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-      <p className="text-sm text-emerald-300 font-medium transition-all duration-400"
-        style={{ opacity: visible ? 1 : 0 }}>
-        {ACTIVITIES[idx]}
-      </p>
-    </div>
-  )
-}
-
-// ── Score Preview Card ─────────────────────────────────────────────────────────
-function ScorePreviewCard() {
-  const [score] = useState(58)
-  const [shown, setShown] = useState(0)
-  const ref = useRef<HTMLDivElement>(null)
-  const inView = useInView(ref as React.RefObject<Element>)
-
-  useEffect(() => {
-    if (!inView) return
-    let c = 0
-    const iv = setInterval(() => {
-      c = Math.min(c + 1, score)
-      setShown(c)
-      if (c >= score) clearInterval(iv)
-    }, 28)
-    return () => clearInterval(iv)
-  }, [inView])
-
-  const radius = 54, circ = 2 * Math.PI * radius
-  const dash = (shown / 100) * circ
-
-  return (
-    <div ref={ref} className="rounded-2xl p-5 text-white w-72"
-      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)' }}>
-      <p className="text-xs font-bold uppercase tracking-widest text-white/40 mb-4">Live ATS Score Preview</p>
-      <div className="flex items-center gap-5">
-        <div className="relative w-28 h-28 shrink-0">
-          <svg width="112" height="112" style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx="56" cy="56" r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10" />
-            <circle cx="56" cy="56" r={radius} fill="none" stroke="#f87171" strokeWidth="10"
-              strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-              style={{ transition: 'stroke-dasharray 0.05s linear' }} />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-3xl font-black text-white">{shown}</span>
-            <span className="text-[10px] text-red-400 font-bold">NEEDS FIX</span>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-emerald-400 mb-2 flex items-center gap-1.5">
+              <Check className="h-3 w-3" /> Matched
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {['Python', 'AWS', 'Docker'].map(kw => <KeywordChip key={kw} word={kw} pass />)}
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-red-400 mb-2 flex items-center gap-1.5">
+              <span className="text-[10px]">✕</span> Missing
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {['Kubernetes', 'CI/CD', 'Terraform'].map(kw => <KeywordChip key={kw} word={kw} pass={false} />)}
+            </div>
           </div>
         </div>
-        <div className="space-y-2 flex-1 min-w-0">
-          {['Missing keywords', 'No metrics', 'Weak bullets', 'Format issues'].map((issue, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-              <span className="text-xs text-white/60 truncate">{issue}</span>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   TAILORED VERSION PREVIEW
+══════════════════════════════════════════════════════════════════════════════ */
+function TailoredVersionPreview() {
+  return (
+    <div className="rounded-xl bg-[#161A22] border border-[#2A2F3A] overflow-hidden">
+      <div className="flex items-center gap-2 px-5 py-4 border-b border-[#2A2F3A]">
+        <div className="w-3 h-3 rounded-full bg-[#2A2F3A]" />
+        <div className="w-3 h-3 rounded-full bg-[#2A2F3A]" />
+        <div className="w-3 h-3 rounded-full bg-[#3D5A80]" />
+        <span className="ml-3 text-xs text-[#6B7280] font-mono">craftlycv.in/tailor</span>
+      </div>
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm font-medium text-[#F1F3F5]">Senior Backend Engineer — Stripe</p>
+            <p className="text-xs text-[#6B7280]">Tailored version · v3 · 2 hours ago</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] px-2 py-1 rounded bg-[#3D5A80]/20 border border-[#3D5A80]/40 text-[#4A6FA5]">ATS Safe</span>
+            <span className="text-[10px] px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">87% match</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {[
+            { label: 'Before', score: '52', color: COLORS.error },
+            { label: 'Tailored', score: '87', color: COLORS.success },
+            { label: 'Improvement', score: '+35', color: COLORS.accent },
+          ].map((item, i) => (
+            <div key={i} className="text-center p-3 rounded-lg bg-[#1C2028] border border-[#2A2F3A]">
+              <p className="text-[9px] uppercase tracking-widest text-[#6B7280] mb-1">{item.label}</p>
+              <p className="text-lg font-bold" style={{ color: item.color }}>{item.score}</p>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-widest text-[#6B7280]">Tailored bullet</p>
+          {[
+            { label: 'Before', text: 'Worked on backend systems and APIs', pass: false },
+            { label: 'After', text: 'Architected distributed payment APIs processing $2M+ daily across 12 microservices', pass: true },
+          ].map((item, i) => (
+            <div key={i} className="flex items-start gap-3">
+              <span className="text-[10px] uppercase tracking-widest text-[#6B7280] w-12 mt-0.5 shrink-0">{item.label}</span>
+              <p className={`text-xs ${i === 0 ? 'text-[#6B7280] line-through' : 'text-[#F1F3F5]'}`}>{item.text}</p>
             </div>
           ))}
         </div>
       </div>
-      <div className="mt-4 pt-4 border-t border-white/8">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-white/40">After CraftlyCV fixes</span>
-          <span className="text-sm font-black text-emerald-400">→ 84</span>
-        </div>
-        <div className="w-full bg-white/8 rounded-full h-2">
-          <div className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-green-400" style={{ width: '84%' }} />
-        </div>
-      </div>
     </div>
   )
 }
 
-// ── Feature Tabs ──────────────────────────────────────────────────────────────
-type Tab = 'resume' | 'interview' | 'jobs' | 'earn'
+const TRUST_COMPANIES = ['TCS', 'Infosys', 'Wipro', 'Amazon', 'Google', 'Microsoft', 'Flipkart', 'Deloitte']
 
-const TABS: { id: Tab; label: string; icon: any; color: string }[] = [
-  { id: 'resume', label: 'Resume Builder', icon: FileText, color: '#60a5fa' },
-  { id: 'interview', label: 'Interview Practice', icon: MessageSquare, color: '#34d399' },
-  { id: 'jobs', label: 'Find Jobs', icon: Search, color: '#a78bfa' },
-  { id: 'earn', label: 'Earn Online', icon: DollarSign, color: '#fbbf24' },
-]
-
-// ── Demo Resume Builder ────────────────────────────────────────────────────────
-function DemoResumeBuilder() {
-  const [email, setEmail] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const [done, setDone] = useState(false)
-
-  const handleUpload = () => {
-    if (!email) return
-    setUploading(true)
-    setTimeout(() => { setUploading(false); setDone(true) }, 1500)
-  }
-
+function SparklesIcon({ className }: { className?: string }) {
   return (
-    <div className="space-y-4">
-      <p className="text-white/60 text-sm">Enter your email to get started free:</p>
-      <div className="flex gap-2">
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder="you@email.com"
-          className="flex-1 bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-blue-500"
-        />
-        <button
-          onClick={handleUpload}
-          disabled={!email || uploading}
-          className="px-5 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-white/10 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 disabled:cursor-not-allowed"
-        >
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : done ? <CheckCircle className="h-4 w-4" /> : <><Zap className="h-4 w-4" />Free Scan</>}
-        </button>
-      </div>
-      {done && <p className="text-emerald-400 text-sm font-medium">✓ Check your email to access free scan!</p>}
-      <div className="flex items-center gap-4 text-xs text-white/40 pt-2">
-        <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-emerald-400" />10 free scans</span>
-        <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-emerald-400" />No credit card</span>
-        <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-emerald-400" />30 seconds</span>
-      </div>
-    </div>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 3v3M18.5 5.5l-1.5 1.5M21 12h-3M18.5 18.5l-1.5-1.5M12 18v3M5.5 18.5l1.5-1.5M3 12h3M5.5 5.5l1.5 1.5" />
+      <circle cx="12" cy="12" r="1" />
+    </svg>
   )
 }
 
-// ── Demo Interview ──────────────────────────────────────────────────────────────
-function DemoInterview() {
-  const [step, setStep] = useState(0)
-  const messages = [
-    { role: 'interviewer', text: "Tell me about a time you had to deal with a difficult coworker." },
-    { role: 'candidate', text: "I usually try to avoid confrontation..." },
-    { role: 'interviewer', text: "That's one approach. But using the STAR method — what was the Situation, Task, Action, Result?" },
-  ]
-
+function BriefcaseIcon({ className }: { className?: string }) {
   return (
-    <div className="space-y-3">
-      <div className="bg-white/5 rounded-xl p-4 space-y-3 max-h-48 overflow-y-auto">
-        {messages.slice(0, step + 1).map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'candidate' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs ${m.role === 'interviewer' ? 'bg-white/10 text-white/80' : 'bg-blue-600 text-white'}`}>
-              {m.role === 'interviewer' && (
-                <div className="flex items-center gap-1.5 mb-1.5 text-white/40">
-                  <MessageSquare className="h-3 w-3" /> AI Interviewer
-                </div>
-              )}
-              {m.text}
-            </div>
-          </div>
-        ))}
-      </div>
-      {step < messages.length - 1 && (
-        <button onClick={() => setStep(s => s + 1)}
-          className="w-full py-2.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-medium rounded-xl hover:bg-emerald-500/30 transition-all">
-          Next →
-        </button>
-      )}
-      {step === messages.length - 1 && (
-        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3">
-          <p className="text-green-400 text-xs font-bold mb-1">✓ Interview complete! Score: 72/100</p>
-          <p className="text-white/50 text-xs">STAR feedback: Use specific metrics next time</p>
-        </div>
-      )}
-    </div>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect width="20" height="14" x="2" y="7" rx="2" ry="2" />
+      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+    </svg>
   )
 }
 
-// ── Demo Jobs ─────────────────────────────────────────────────────────────────
-function DemoJobs() {
-  const jobs = [
-    { role: 'React Developer', company: 'Flipkart', location: 'Bangalore', salary: '₹18-25 LPA', tags: ['Remote', 'Urgent'] },
-    { role: 'Data Analyst', company: 'Swiggy', location: 'Hyderabad', salary: '₹8-12 LPA', tags: ['On-site', 'Freshers'] },
-    { role: 'Product Manager', company: 'CRED', location: 'Mumbai', salary: '₹25-35 LPA', tags: ['Hybrid'] },
-  ]
-  return (
-    <div className="space-y-2">
-      {jobs.map((j, i) => (
-        <div key={i} className="flex items-center justify-between bg-white/5 border border-white/8 rounded-xl px-4 py-3 hover:bg-white/10 transition-all cursor-pointer">
-          <div>
-            <p className="text-white text-sm font-medium">{j.role}</p>
-            <p className="text-white/50 text-xs">{j.company} · {j.location}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-emerald-400 text-xs font-bold">{j.salary}</p>
-            <div className="flex gap-1 mt-1 justify-end">
-              {j.tags.map((t, ti) => (
-                <span key={ti} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/50">{t}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-      ))}
-      <button className="w-full py-2.5 bg-purple-500/20 border border-purple-500/30 text-purple-400 text-xs font-medium rounded-xl hover:bg-purple-500/30 transition-all flex items-center justify-center gap-2">
-        View 500+ Jobs <ChevronRight className="h-3 w-3" />
-      </button>
-    </div>
-  )
-}
-
-// ── Demo Earn ─────────────────────────────────────────────────────────────────
-function DemoEarn() {
-  const paths = [
-    { icon: '💻', title: 'Freelance on Upwork', sub: '₹5K-50K/month', time: 'Start in 3 days' },
-    { icon: '🎥', title: 'YouTube Automation', sub: '₹10K-1L/month', time: 'Start in 7 days' },
-    { icon: '🤖', title: 'AI Training (Outlier)', sub: '₹15K-40K/month', time: 'Start in 1 day' },
-  ]
-  return (
-    <div className="space-y-2">
-      {paths.map((p, i) => (
-        <div key={i} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3 hover:bg-white/10 transition-all">
-          <span className="text-2xl">{p.icon}</span>
-          <div className="flex-1">
-            <p className="text-white text-sm font-medium">{p.title}</p>
-            <p className="text-white/50 text-xs">{p.time}</p>
-          </div>
-          <div className="text-emerald-400 text-xs font-bold">{p.sub}</div>
-        </div>
-      ))}
-      <button className="w-full py-2.5 bg-orange-500/20 border border-orange-500/30 text-orange-400 text-xs font-medium rounded-xl hover:bg-orange-500/30 transition-all flex items-center justify-center gap-2">
-        See All Income Paths <ChevronRight className="h-3 w-3" />
-      </button>
-    </div>
-  )
-}
-
-// ── Background ────────────────────────────────────────────────────────────────
-function PageBg() {
-  return (
-    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden>
-      <div className="absolute inset-0 bg-[#060c1a]" />
-      <div className="absolute -top-60 -left-60 w-[800px] h-[800px] rounded-full opacity-[0.10]"
-        style={{ background: 'radial-gradient(circle, #1E6FD9 0%, transparent 70%)' }} />
-      <div className="absolute top-1/2 -right-40 w-[600px] h-[600px] rounded-full opacity-[0.08]"
-        style={{ background: 'radial-gradient(circle, #FF6B35 0%, transparent 70%)' }} />
-      <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] rounded-full opacity-[0.06]"
-        style={{ background: 'radial-gradient(circle, #7c3aed 0%, transparent 70%)' }} />
-      <div className="absolute inset-0 opacity-[0.025]"
-        style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
-    </div>
-  )
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MAIN PAGE
+══════════════════════════════════════════════════════════════════════════════ */
 export default function HomePage() {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>('resume')
-
   return (
-    <div className="min-h-screen relative text-white">
-      <PageBg />
-      <div className="relative z-10">
+    <main className="bg-[#0F1117] text-[#F1F3F5] min-h-screen">
+      <Nav />
 
-        {/* NAV */}
-        <nav className="sticky top-0 z-50 border-b border-white/6 bg-[#060c1a]/80 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2.5">
-              <Image src="/logo.svg" alt="CraftlyCV" width={36} height={36} className="rounded-xl" />
-              <span className="text-xl font-black text-white">CraftlyCV</span>
-            </Link>
-            <div className="hidden md:flex items-center gap-1">
-              <Link href="/build" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Resume Builder</Link>
-              <Link href="/mock-interview" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Interview</Link>
-              <Link href="/jobs" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Jobs</Link>
-              <Link href="/income" className="px-4 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-all">Earn Online</Link>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/auth" className="px-4 py-2 rounded-xl text-white/60 hover:text-white text-sm font-medium transition-all hidden sm:block">Sign In</Link>
-              <Link href="/auth"
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-105">
-                Get Started Free →
-              </Link>
-            </div>
-            <button className="md:hidden p-2 text-white/60 hover:text-white" onClick={() => setMenuOpen(v => !v)}>
-              {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
-          {menuOpen && (
-            <div className="md:hidden border-t border-white/6 bg-[#060c1a]/95 px-4 py-4 space-y-2">
-              {[['Resume Builder', '/build'], ['Interview', '/mock-interview'], ['Jobs', '/jobs'], ['Earn Online', '/income'], ['Sign In', '/auth']].map(([l, h]) => (
-                <Link key={h} href={h} onClick={() => setMenuOpen(false)}
-                  className="block px-4 py-3 rounded-xl text-white/70 hover:bg-white/5 text-sm font-medium">{l}</Link>
-              ))}
-              <Link href="/auth" onClick={() => setMenuOpen(false)}
-                className="block px-4 py-3 rounded-xl bg-blue-600 text-white text-sm font-bold text-center">Get Started Free</Link>
-            </div>
-          )}
-        </nav>
-
-        {/* HERO */}
-        <section className="pt-20 pb-12 px-4">
-          <div className="max-w-7xl mx-auto">
-            <div className="grid lg:grid-cols-2 gap-16 items-center">
-
-              {/* Left — Copy */}
-              <div>
-                <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-2 rounded-full text-sm font-semibold mb-8">
-                  <Zap className="h-4 w-4" /> Career Operating System — Not just a resume builder
+      {/* ─── HERO ─────────────────────────────────────────────────────────── */}
+      <section className="pt-40 pb-24 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid lg:grid-cols-12 gap-16 items-start">
+            {/* Left — editorial copy */}
+            <div className="lg:col-span-7 space-y-8">
+              <Reveal>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-px bg-[#3D5A80]" />
+                  <span className="text-[11px] uppercase tracking-widest text-[#3D5A80] font-medium">
+                    ATS Resume Optimization
+                  </span>
                 </div>
-                <h1 className="text-5xl md:text-6xl lg:text-7xl font-black leading-[1.05] mb-6">
-                  Get hired or start
-                  <span className="block text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-green-400"> earning in</span>
-                  <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-blue-300"> 7 days.</span>
+              </Reveal>
+
+              <Reveal delay={0.05}>
+                <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-[#F1F3F5] leading-[1.0] tracking-tight">
+                  Your resume is
+                  <br />
+                  <span className="text-[#3D5A80]">getting rejected</span>
+                  <br />
+                  before anyone reads it.
                 </h1>
-                <p className="text-lg text-white/50 mb-8 leading-relaxed max-w-lg">
-                  AI Resume Builder + Real Interview Practice + Jobs + Gigs. Everything you need to get a job OR make money online — in one platform.
-                </p>
+              </Reveal>
 
-                <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                  <Link href="/auth"
-                    className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold text-lg transition-all shadow-2xl shadow-blue-500/20 hover:scale-105">
-                    <FileText className="h-5 w-5" /> Build My Resume — Free
+              <Reveal delay={0.1}>
+                <p className="text-lg text-[#9CA3AF] leading-relaxed max-w-lg">
+                  CraftlyCV diagnoses exactly why ATS systems reject your resume,
+                  fixes the keyword gaps, and tailors every version for your target role.
+                </p>
+              </Reveal>
+
+              <Reveal delay={0.15}>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Link href="/auth">
+                    <Button size="lg" className="gap-2 bg-[#3D5A80] hover:bg-[#4A6FA5] text-white border-0">
+                      Analyze my resume free <ArrowRight className="h-4 w-4" />
+                    </Button>
                   </Link>
-                  <Link href="/mock-interview"
-                    className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-white/6 hover:bg-white/10 border border-white/10 text-white font-bold text-lg transition-all">
-                    <Mic className="h-5 w-5" /> Practice Interview Now
+                  <Link href="/#how-it-works">
+                    <Button variant="outline" size="lg" className="gap-2 border-[#2A2F3A] text-[#9CA3AF] hover:bg-[#1C2028] hover:text-[#F1F3F5]">
+                      See how it works
+                    </Button>
                   </Link>
                 </div>
+              </Reveal>
 
-                <p className="text-sm text-white/30 mb-6">✓ 10 free scans · No credit card · Results in 30 seconds</p>
+              <Reveal delay={0.2}>
+                <div className="flex items-center gap-6 pt-2">
+                  {[
+                    { value: '50,000+', label: 'resumes analyzed' },
+                    { value: '94%', label: 'score improvement' },
+                    { value: '30 sec', label: 'analysis time' },
+                  ].map((stat, i) => (
+                    <div key={i} className={i > 0 ? 'pl-6 border-l border-[#2A2F3A]' : ''}>
+                      <div className="text-sm font-bold text-[#F1F3F5]">{stat.value}</div>
+                      <div className="text-xs text-[#6B7280]">{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </Reveal>
+            </div>
 
-                <LiveTicker />
-              </div>
-
-              {/* Right — Animation */}
-              <div className="flex flex-col items-center gap-8">
-                <CareerStoryAnimation />
-                <ScorePreviewCard />
-              </div>
+            {/* Right — ATS analyzer preview */}
+            <div className="lg:col-span-5">
+              <Reveal delay={0.1}>
+                <ATSAnalyzerPreview />
+              </Reveal>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* STATS */}
-        <section className="py-12 px-4 border-y border-white/6 bg-white/2">
-          <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            {[
-              { to: 50000, suffix: '+', label: 'Resumes Analyzed' },
-              { to: 94, suffix: '%', label: 'Score Improvement' },
-              { to: 2, suffix: '.5x', label: 'More Interviews' },
-              { to: 30, suffix: ' sec', label: 'Analysis Time' },
-            ].map((s, i) => (
-              <div key={i}>
-                <div className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-blue-300 mb-1">
-                  <Counter to={s.to} suffix={s.suffix} />
-                </div>
-                <div className="text-white/40 text-sm">{s.label}</div>
-              </div>
+      {/* ─── TRUST BAR ────────────────────────────────────────────────────── */}
+      <section className="py-10 border-y border-[#2A2F3A]">
+        <div className="max-w-6xl mx-auto px-6">
+          <p className="text-center text-[11px] uppercase tracking-widest text-[#6B7280] mb-6">
+            Used by job seekers applying to
+          </p>
+          <div className="flex flex-wrap justify-center gap-x-8 gap-y-3">
+            {TRUST_COMPANIES.map(c => (
+              <span key={c} className="text-sm font-semibold text-[#6B7280]">{c}</span>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* PRODUCT TABS */}
-        <section className="py-16 px-4">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-10">
-              <h2 className="text-4xl font-black mb-3">
-                One platform.<br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-orange-400">Four ways to win.</span>
-              </h2>
-              <p className="text-white/40 max-w-md mx-auto">From building your resume to landing interviews or earning online — we cover every path.</p>
+      {/* ─── PROBLEM ───────────────────────────────────────────────────────── */}
+      <section className="py-24 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid lg:grid-cols-12 gap-16">
+            <div className="lg:col-span-5">
+              <Reveal>
+                <SectionLabel>Why resumes fail</SectionLabel>
+                <h2 className="text-4xl font-bold text-[#F1F3F5] leading-tight mb-4">
+                  ATS systems reject 98% of resumes before a human ever sees them.
+                </h2>
+                <p className="text-[#9CA3AF] leading-relaxed mb-6">
+                  It's not about your experience. It's about whether your resume
+                  communicates the right keywords, in the right format, for the right system.
+                </p>
+                <p className="text-[#6B7280] leading-relaxed">
+                  Most job seekers don't know what ATS actually reads — they just know
+                  they're not getting callbacks.
+                </p>
+              </Reveal>
             </div>
 
-            {/* Tab buttons */}
-            <div className="flex flex-wrap justify-center gap-2 mb-8">
-              {TABS.map(tab => {
-                const Icon = tab.icon
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      activeTab === tab.id
-                        ? 'text-white'
-                        : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10'
-                    }`}
-                    style={activeTab === tab.id ? { background: `${tab.color}20`, border: `1px solid ${tab.color}40` } : {}}
-                  >
-                    <Icon className="h-4 w-4" style={{ color: activeTab === tab.id ? tab.color : undefined }} />
-                    {tab.label}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Tab content */}
-            <div className="grid lg:grid-cols-2 gap-8 items-start">
-              <div className="rounded-2xl p-6 border border-white/8 bg-white/3">
-                <h3 className="text-xl font-bold text-white mb-4">
-                  {activeTab === 'resume' && 'AI Resume Builder'}
-                  {activeTab === 'interview' && 'AI Mock Interview'}
-                  {activeTab === 'jobs' && 'Job Finder'}
-                  {activeTab === 'earn' && 'Income Hub'}
-                </h3>
-                {activeTab === 'resume' && <DemoResumeBuilder />}
-                {activeTab === 'interview' && <DemoInterview />}
-                {activeTab === 'jobs' && <DemoJobs />}
-                {activeTab === 'earn' && <DemoEarn />}
-              </div>
-              <div className="space-y-4">
-                {activeTab === 'resume' && [
-                  { icon: Target, title: 'ATS Score in 30 sec', desc: 'Upload your resume and get a detailed ATS score with specific fixes.' },
-                  { icon: Sparkles, title: 'AI Tailor to Job', desc: 'Paste any job description and get your resume rewritten to match.' },
-                  { icon: FileText, title: '20+ Templates', desc: 'Professional templates optimized for ATS and hiring managers.' },
-                ].map((f, i) => (
-                  <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/6">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
-                      <f.icon className="h-5 w-5 text-blue-400" />
+            <div className="lg:col-span-7 space-y-0">
+              <Reveal>
+                <div className="space-y-0 divide-y divide-[#2A2F3A]">
+                  {[
+                    { stat: '72%', title: 'Filtered before review', desc: 'ATS software rejects the majority of applications before a recruiter opens the file.' },
+                    { stat: '< 6 sec', title: 'Average resume scan time', desc: 'Recruiters spend less than six seconds on the first pass. Your resume needs to communicate value instantly.' },
+                    { stat: '3–5×', title: 'More applications with a tailored resume', desc: 'Jobs that expect specific keywords get 3 to 5 times more applications. ATS-optimized resumes get more interviews.' },
+                  ].map((item, i) => (
+                    <div key={i} className="py-6">
+                      <div className="text-3xl font-bold text-[#F87171] mb-2">{item.stat}</div>
+                      <h3 className="text-base font-semibold text-[#F1F3F5] mb-2">{item.title}</h3>
+                      <p className="text-sm text-[#6B7280] leading-relaxed">{item.desc}</p>
                     </div>
-                    <div>
-                      <p className="font-medium text-white text-sm">{f.title}</p>
-                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
-                    </div>
-                  </div>
-                ))}
-                {activeTab === 'interview' && [
-                  { icon: MessageSquare, title: 'Chat-style AI Interviewer', desc: 'Answer questions like you would in a real interview — by typing or voice.' },
-                  { icon: Star, title: 'STAR Method Feedback', desc: 'After each answer, get structured feedback on your response.' },
-                  { icon: TrendingUp, title: 'Confidence Score', desc: 'End-to-end scoring on clarity, relevance, and impact.' },
-                ].map((f, i) => (
-                  <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/6">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0">
-                      <f.icon className="h-5 w-5 text-emerald-400" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-white text-sm">{f.title}</p>
-                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
-                    </div>
-                  </div>
-                ))}
-                {activeTab === 'jobs' && [
-                  { icon: Search, title: 'Job Aggregation', desc: 'Find relevant jobs from multiple sources in one place.' },
-                  { icon: Briefcase, title: 'Role Matching', desc: 'Get matched to roles based on your resume and skills.' },
-                  { icon: Award, title: 'Direct Apply', desc: 'Apply directly with your CraftlyCV-optimized resume.' },
-                ].map((f, i) => (
-                  <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/6">
-                    <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
-                      <f.icon className="h-5 w-5 text-purple-400" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-white text-sm">{f.title}</p>
-                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
-                    </div>
-                  </div>
-                ))}
-                {activeTab === 'earn' && [
-                  { icon: DollarSign, title: 'Freelance Gigs', desc: 'Upwork, Fiverr, and more. Get matched to gigs you can start today.' },
-                  { icon: Play, title: 'YouTube Automation', desc: 'Build a faceless YouTube channel with AI tools. Real income path.' },
-                  { icon: Users, title: 'AI Training Platforms', desc: 'Earn ₹15-40K/month labeling AI data on Outlier, Scale AI, etc.' },
-                ].map((f, i) => (
-                  <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/6">
-                    <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0">
-                      <f.icon className="h-5 w-5 text-orange-400" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-white text-sm">{f.title}</p>
-                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* CTA */}
-            <div className="text-center mt-8">
-              <Link href="/auth"
-                className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-base transition-all">
-                <Zap className="h-4 w-4" /> Start Free — No Credit Card
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* HOW IT WORKS */}
-        <section className="py-24 px-4 border-y border-white/6 bg-white/2">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-16">
-              <h2 className="text-4xl font-black mb-4">From upload to offer letter — or income</h2>
-              <p className="text-white/40">Three steps. Real results. Multiple paths to win.</p>
-            </div>
-            <div className="grid md:grid-cols-3 gap-6 relative">
-              <div className="hidden md:block absolute top-10 left-1/4 right-1/4 h-px bg-gradient-to-r from-blue-600/50 via-blue-400/50 to-blue-600/50" />
-              {[
-                { n: '01', icon: '📤', title: 'Upload your resume', desc: 'PDF or DOCX. Or build one from scratch using our AI builder — free.' },
-                { n: '02', icon: '🤖', title: 'AI optimizes everything', desc: 'ATS score, keywords, interview questions, job matches, income paths.' },
-                { n: '03', icon: '🎯', title: 'You take action', desc: 'Apply to jobs, practice interviews, or start earning online — your choice.' },
-              ].map((s, i) => (
-                <div key={i} className="rounded-2xl p-7 text-center relative"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div className="text-5xl mb-4">{s.icon}</div>
-                  <p className="text-xs font-black text-blue-400 tracking-widest mb-2">{s.n}</p>
-                  <p className="font-bold text-white text-lg mb-2">{s.title}</p>
-                  <p className="text-sm text-white/40 leading-relaxed">{s.desc}</p>
+                  ))}
                 </div>
-              ))}
+              </Reveal>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* TESTIMONIALS */}
-        <section className="py-16 px-4">
-          <div className="max-w-5xl mx-auto">
-            <p className="text-center text-white/30 text-sm font-bold uppercase tracking-widest mb-10">What users are saying</p>
-            <div className="grid md:grid-cols-3 gap-4">
-              {[
-                { name: 'Arjun S.', role: 'Software Engineer', text: 'Went from 34 to 89 score in one afternoon. Got 3 interview calls the next week.', stars: 5 },
-                { name: 'Priya M.', role: 'Data Analyst', text: 'The income hub showed me freelance options I never knew existed. Made ₹12K in my first month.', stars: 5 },
-                { name: 'Rahul K.', role: 'MBA Graduate', text: 'The AI mock interview is intense. First session I scored 52. By the third, I hit 81.', stars: 5 },
-              ].map((t, i) => (
-                <div key={i} className="rounded-2xl p-6 border border-white/6 bg-white/3">
-                  <div className="flex gap-0.5 mb-3">
-                    {Array.from({ length: t.stars }).map((_, j) => <Star key={j} className="h-4 w-4 fill-yellow-400 text-yellow-400" />)}
-                  </div>
-                  <p className="text-white/70 text-sm leading-relaxed mb-4">"{t.text}"</p>
-                  <div>
-                    <p className="text-white font-semibold text-sm">{t.name}</p>
-                    <p className="text-white/30 text-xs">{t.role}</p>
-                  </div>
+      {/* ─── ATS ANALYZER ──────────────────────────────────────────────────── */}
+      <section id="analyzer" className="py-24 px-6 bg-[#0D0F14]">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid lg:grid-cols-12 gap-16 items-center">
+            <div className="lg:col-span-7 space-y-6">
+              <Reveal>
+                <SectionLabel>ATS Analyzer</SectionLabel>
+                <h2 className="text-4xl font-bold text-[#F1F3F5] leading-tight mb-4">
+                  Know your exact ATS score before you apply.
+                </h2>
+                <p className="text-[#9CA3AF] leading-relaxed">
+                  Upload your resume and get a precise ATS diagnosis — keyword match rate,
+                  formatting compliance, bullet structure — in 30 seconds.
+                </p>
+              </Reveal>
+              <Reveal delay={0.1}>
+                <FeatureListItem icon={Target} title="Keyword gap analysis" desc="Identifies exactly which keywords your target role expects that your resume is missing." />
+                <FeatureListItem icon={BarChart3} title="Section-by-section scoring" desc="Scores each section independently: summary, experience, skills, education, and formatting." />
+                <FeatureListItem icon={Search} title="Missing keyword extraction" desc="Pulls the exact keywords from any job description and tells you which ones to add." />
+              </Reveal>
+              <Reveal delay={0.15}>
+                <Link href="/auth">
+                  <Button size="lg" className="gap-2 bg-[#3D5A80] hover:bg-[#4A6FA5] text-white">
+                    Analyze my resume <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </Reveal>
+            </div>
+            <div className="lg:col-span-5">
+              <Reveal delay={0.1}>
+                <ATSAnalyzerPreview />
+              </Reveal>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── TAILORING ──────────────────────────────────────────────────────── */}
+      <section id="tailoring" className="py-24 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid lg:grid-cols-12 gap-16 items-center">
+            <div className="lg:col-span-5 order-2 lg:order-1">
+              <Reveal delay={0.05}>
+                <TailoredVersionPreview />
+              </Reveal>
+            </div>
+            <div className="lg:col-span-7 space-y-6 order-1 lg:order-2">
+              <Reveal>
+                <SectionLabel>Resume Tailoring</SectionLabel>
+                <h2 className="text-4xl font-bold text-[#F1F3F5] leading-tight mb-4">
+                  Every job description gets its own tailored version.
+                </h2>
+                <p className="text-[#9CA3AF] leading-relaxed">
+                  Paste any job description and our tailoring engine rewrites your resume
+                  to match the exact keywords, seniority, and requirements.
+                </p>
+              </Reveal>
+              <Reveal delay={0.1}>
+                <FeatureListItem icon={Settings2} title="Company-specific tailoring" desc="Match keywords from the exact job posting, not generic advice." />
+                <FeatureListItem icon={FileOutput} title="ATS-safe export" desc="Every tailored version exports in recruiter-friendly formats." />
+                <FeatureListItem icon={Target} title="STAR bullet rewriter" desc="Converts generic bullets into achievement-led, metrics-driven statements." />
+              </Reveal>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── MASTER VAULT ───────────────────────────────────────────────────── */}
+      <section id="vault" className="py-24 px-6 bg-[#0D0F14]">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid lg:grid-cols-12 gap-16">
+            <div className="lg:col-span-6">
+              <Reveal>
+                <SectionLabel>Master Resume Vault</SectionLabel>
+                <h2 className="text-4xl font-bold text-[#F1F3F5] leading-tight mb-4">
+                  One master resume. Infinite tailored versions.
+                </h2>
+                <p className="text-[#9CA3AF] leading-relaxed mb-6">
+                  Your Master Vault is a single, canonical source of truth. Update it once,
+                  then generate job-specific tailored versions in seconds.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { icon: Database, title: 'Version history', desc: 'Every version saved. Compare and restore.' },
+                    { icon: FileOutput, title: 'Multi-format export', desc: 'ATS PDF, Word, HTML. Each optimized.' },
+                  ].map((item, i) => (
+                    <div key={i} className="p-4 rounded-lg bg-[#161A22] border border-[#2A2F3A]">
+                      <item.icon className="h-5 w-5 text-[#3D5A80] mb-3" />
+                      <p className="text-sm font-medium text-[#F1F3F5] mb-1">{item.title}</p>
+                      <p className="text-xs text-[#6B7280]">{item.desc}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </Reveal>
             </div>
-          </div>
-        </section>
-
-        {/* PRICING PREVIEW */}
-        <section className="py-20 px-4">
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-4xl font-black mb-4">Start free. Upgrade when you're winning.</h2>
-            <p className="text-white/40 mb-10 max-w-md mx-auto">
-              10 free scans to start. No credit card. Upgrade to Pro when you land your first interview.
-            </p>
-            <div className="grid md:grid-cols-3 gap-4 text-left">
-              {[
-                { name: 'Free', price: '₹0', scans: '10 scans', features: ['ATS Analyzer', 'Basic Templates', 'Score Card'], cta: 'Get Started', highlight: false },
-                { name: 'Pro', price: '₹149', period: '/mo', scans: '200 scans', features: ['Everything +', 'AI Mock Interview', 'All Templates', 'Priority Support'], cta: 'Start Pro', highlight: true },
-                { name: 'Lifetime', price: '₹399', period: ' one-time', scans: 'All Pro forever', features: ['All Pro features', 'Never pay again', 'Founding badge'], cta: 'Claim Deal', highlight: false, badge: 'Best Value' },
-              ].map((t, i) => (
-                <div key={i} className={`rounded-2xl p-6 border ${t.highlight ? 'border-blue-500/40 bg-blue-600/10' : 'border-white/8 bg-white/3'}`}>
-                  {t.badge && (
-                    <div className="inline-flex items-center gap-1 text-xs font-bold bg-orange-500/15 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded-full mb-3">{t.badge}</div>
-                  )}
-                  <p className="text-white/60 text-sm font-semibold mb-1">{t.name}</p>
-                  <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-3xl font-black text-white">{t.price}</span>
-                    {t.period && <span className="text-white/40 text-xs">{t.period}</span>}
-                  </div>
-                  <p className="text-blue-400 text-xs font-bold mb-4">{t.scans}</p>
-                  <ul className="space-y-2 mb-5">
-                    {t.features.map((f, j) => (
-                      <li key={j} className="flex items-center gap-2 text-xs text-white/65">
-                        <CheckCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />{f}
-                      </li>
+            <div className="lg:col-span-6 flex items-center">
+              <Reveal delay={0.1}>
+                <div className="relative w-full h-64 rounded-xl bg-[#161A22] border border-[#2A2F3A] p-6 overflow-hidden">
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#1C2028_0%,transparent_70%)]" />
+                  <div className="relative z-10 space-y-3">
+                    <p className="text-[10px] uppercase tracking-widest text-[#6B7280] mb-4">Version history</p>
+                    {[
+                      { name: 'Master Resume', version: 'v1.0', status: 'current', color: COLORS.accent },
+                      { name: 'Stripe — Senior Backend', version: 'v0.8', status: 'tailored', color: COLORS.success },
+                      { name: 'Google — L4 Engineer', version: 'v0.5', status: 'draft', color: COLORS.textMuted },
+                      { name: 'Amazon — SDE II', version: 'v0.2', status: 'tailored', color: COLORS.success },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 py-2 border-b border-[#2A2F3A] last:border-0">
+                        <div className="w-2 h-2 rounded-full" style={{ background: item.color }} />
+                        <div className="flex-1">
+                          <p className="text-sm text-[#F1F3F5]">{item.name}</p>
+                          <p className="text-xs text-[#6B7280]">{item.version}</p>
+                        </div>
+                        <span className="text-[10px] text-[#6B7280] capitalize">{item.status}</span>
+                      </div>
                     ))}
-                  </ul>
-                  <Link href="/pricing"
-                    className={`block text-center py-2.5 rounded-xl font-bold text-xs transition-all ${
-                      t.highlight
-                        ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                        : 'bg-white/8 hover:bg-white/12 border border-white/10 text-white'
-                    }`}>
-                    {t.cta}
-                  </Link>
+                  </div>
                 </div>
-              ))}
+              </Reveal>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* FINAL CTA */}
-        <section className="py-28 px-4">
-          <div className="max-w-3xl mx-auto text-center">
-            <div className="text-6xl mb-6">🚀</div>
-            <h2 className="text-5xl font-black mb-5 leading-tight">
-              Your next job offer<br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-orange-400">is one scan away.</span>
+      {/* ─── HOW IT WORKS ─────────────────────────────────────────────────── */}
+      <section id="how-it-works" className="py-24 px-6">
+        <div className="max-w-6xl mx-auto">
+          <Reveal>
+            <div className="max-w-xl mb-16">
+              <SectionLabel>How it works</SectionLabel>
+              <h2 className="text-4xl font-bold text-[#F1F3F5] leading-tight mb-4">
+                Three steps from rejection to ready-to-apply.
+              </h2>
+              <p className="text-[#9CA3AF]">
+                From upload to ATS-optimized export in under two minutes.
+              </p>
+            </div>
+          </Reveal>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              { step: '01', title: 'Upload or build', desc: 'Drop a PDF or DOCX — or build from scratch using our guided builder.' },
+              { step: '02', title: 'Get your diagnosis', desc: 'Instant ATS score, keyword gap analysis, formatting issues, and specific suggestions.' },
+              { step: '03', title: 'Export and apply', desc: 'Download a recruiter-ready, ATS-optimized version tailored for your target role.' },
+            ].map((item, i) => (
+              <Reveal key={item.step} delay={i * 0.1}>
+                <div className="relative">
+                  <div className="text-[11px] uppercase tracking-widest text-[#3D5A80] font-semibold mb-4">{item.step}</div>
+                  <h3 className="text-lg font-semibold text-[#F1F3F5] mb-3">{item.title}</h3>
+                  <p className="text-sm text-[#6B7280] leading-relaxed">{item.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── SOCIAL PROOF ─────────────────────────────────────────────────── */}
+      <section className="py-24 px-6 bg-[#0D0F14]">
+        <div className="max-w-6xl mx-auto">
+          <Reveal>
+            <SectionLabel>Results</SectionLabel>
+            <h2 className="text-4xl font-bold text-[#F1F3F5] leading-tight mb-12">
+              Real score improvements from real job seekers.
             </h2>
-            <p className="text-white/40 text-lg mb-10 max-w-md mx-auto">
-              Stop sending the same resume to 200 companies. Start winning.
+          </Reveal>
+
+          <div className="grid md:grid-cols-2 gap-x-16 gap-y-0">
+            {[
+              { quote: 'I went from 34 to 89 ATS score in one afternoon. Three interviews the following week.', name: 'Priya S.', role: 'Software Engineer, Mumbai', score: '+55 pts' },
+              { quote: 'Tailored my resume for a TCS role in 15 minutes. Got the interview call the next day.', name: 'Rahul M.', role: 'Systems Engineer, Bangalore', score: '+47 pts' },
+              { quote: 'I finally understood what ATS actually looks for. Eight applications, four callbacks.', name: 'Sneha K.', role: 'Marketing Manager, Delhi', score: '+38 pts' },
+              { quote: 'The STAR bullet rewriter is remarkable. My bullets went from generic to specific achievements.', name: 'Arjun V.', role: 'Backend Engineer, Hyderabad', score: '+41 pts' },
+            ].map((item, i) => (
+              <Reveal key={item.name} delay={i * 0.05}>
+                <TestimonialBlock {...item} />
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── PRODUCT MODULES ──────────────────────────────────────────────── */}
+      <section className="py-24 px-6">
+        <div className="max-w-6xl mx-auto">
+          <Reveal className="mb-12">
+            <SectionLabel>Platform</SectionLabel>
+            <h2 className="text-4xl font-bold text-[#F1F3F5] leading-tight">
+              Everything you need to run a smarter job search.
+            </h2>
+          </Reveal>
+
+          <StaggerGroup className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { icon: Target, label: 'Analyzer', title: 'ATS Score Checker', desc: 'Diagnose keyword gaps and formatting issues in 30 seconds.' },
+              { icon: SparklesIcon, label: 'Tailoring', title: 'Resume Tailoring Engine', desc: 'AI-rewrite your resume for any job description in seconds.' },
+              { icon: Database, label: 'Vault', title: 'Master Resume Vault', desc: 'One source of truth. Infinite tailored versions. Full history.' },
+              { icon: BriefcaseIcon, label: 'Tracker', title: 'Job Tracker', desc: 'Track every application. Measure what\'s working.' },
+            ].map((item, i) => (
+              <StaggerItem key={i}>
+                <ProductCard {...item} />
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+        </div>
+      </section>
+
+      {/* ─── PRICING ───────────────────────────────────────────────────────── */}
+      <section id="pricing" className="py-24 px-6 bg-[#0D0F14]">
+        <div className="max-w-6xl mx-auto">
+          <Reveal className="mb-12">
+            <SectionLabel>Pricing</SectionLabel>
+            <h2 className="text-4xl font-bold text-[#F1F3F5] leading-tight mb-4">
+              Start free. Upgrade when it matters.
+            </h2>
+            <p className="text-[#9CA3AF]">3 free scans. No credit card. Upgrade when you're getting interviews.</p>
+          </Reveal>
+
+          <div className="grid sm:grid-cols-3 gap-4 max-w-4xl">
+            <Reveal delay={0.05}>
+              <PricingCard name="Free" price="₹0" period="forever" features={['3 free ATS scans', 'Keyword analysis', '1 tailored version export', 'PDF download']} />
+            </Reveal>
+            <Reveal delay={0.1}>
+              <PricingCard name="Pro" price="₹499" period="/month" highlight badge="Most popular" features={['Unlimited scans', 'Unlimited tailoring', 'Full vault access', 'No watermark', 'All export formats', 'Priority support']} />
+            </Reveal>
+            <Reveal delay={0.15}>
+              <PricingCard name="Lifetime" price="₹2999" period=" one-time" features={['Everything in Pro', 'Pay once, use forever', 'Founding member badge', 'Early access features']} />
+            </Reveal>
+          </div>
+
+          <Reveal delay={0.2} className="mt-8 text-center">
+            <p className="text-xs text-[#6B7280]">All prices in INR. 7-day refund guarantee. Cancel anytime.</p>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── FAQ ──────────────────────────────────────────────────────────── */}
+      <section id="faq" className="py-24 px-6">
+        <div className="max-w-3xl mx-auto">
+          <Reveal className="mb-8">
+            <SectionLabel>Questions</SectionLabel>
+            <h2 className="text-3xl font-bold text-[#F1F3F5]">Frequently asked questions.</h2>
+          </Reveal>
+
+          <Reveal delay={0.05}>
+            <div className="rounded-xl bg-[#161A22] border border-[#2A2F3A] px-6">
+              <FAQItem q="Is CraftlyCV really free?" a="Yes. You get 3 free ATS scans with no credit card. Pro starts at ₹499/month if you want unlimited access." />
+              <FAQItem q="How does ATS analysis work?" a="Our analyzer evaluates your resume against real ATS criteria: keyword density, formatting, section structure, and readability. We train on global and Indian ATS platforms." />
+              <FAQItem q="Does this work for Indian companies like TCS and Infosys?" a="Yes. We specifically train our ATS model on platforms used by major Indian employers with keyword expectations calibrated for the Indian market." />
+              <FAQItem q="Is my resume data private?" a="Your resume is used only to generate your analysis. We do not share, sell, or use your resume data for any other purpose. You can delete your data at any time." />
+              <FAQItem q="What's the difference between Free and Pro?" a="Free gives you 3 limited scans with PDF export. Pro gives you unlimited scans, unlimited tailoring, full vault access, all export formats, and priority support." />
+              <FAQItem q="Can freshers use this?" a="Absolutely. The ATS analyzer handles freshers well — it focuses on skills, education, and projects. Many of our users are freshers who landed their first interview." />
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── FINAL CTA ────────────────────────────────────────────────────── */}
+      <section className="py-28 px-6 border-t border-[#2A2F3A]">
+        <div className="max-w-3xl mx-auto text-center">
+          <Reveal>
+            <SectionLabel>Get started</SectionLabel>
+            <h2 className="text-4xl sm:text-5xl font-bold text-[#F1F3F5] leading-tight mb-6">
+              Your next interview starts with one upload.
+            </h2>
+            <p className="text-[#9CA3AF] text-lg mb-10 max-w-lg mx-auto">
+              3 free scans. No credit card. Know your exact ATS score in 30 seconds.
             </p>
-            <Link href="/auth"
-              className="inline-flex items-center gap-3 px-10 py-5 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-black text-xl transition-all shadow-2xl shadow-blue-500/25 hover:scale-105">
-              <Zap className="h-6 w-6" /> Build My Resume — Free
+            <Link href="/auth">
+              <Button size="xl" className="gap-2 px-8 bg-[#3D5A80] hover:bg-[#4A6FA5] text-white">
+                Analyze my resume free <ArrowRight className="h-4 w-4" />
+              </Button>
             </Link>
-            <p className="text-white/25 text-sm mt-5">10 free scans · No credit card · 30 seconds</p>
-          </div>
-        </section>
+          </Reveal>
+        </div>
+      </section>
 
-        {/* FOOTER */}
-        <footer className="border-t border-white/6 py-12 px-4">
-          <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-2.5">
-              <Image src="/logo.svg" alt="CraftlyCV" width={36} height={36} className="rounded-xl" />
-              <span className="text-xl font-black text-white">CraftlyCV</span>
+      {/* ─── FOOTER ──────────────────────────────────────────────────────── */}
+      <footer className="border-t border-[#2A2F3A] py-10 px-6">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-md bg-[#3D5A80] flex items-center justify-center">
+              <FileText className="h-3.5 w-3.5 text-white" />
             </div>
-            <div className="flex items-center gap-6 text-sm text-white/30">
-              <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-              <Link href="/build" className="hover:text-white transition-colors">Resume Builder</Link>
-              <Link href="/mock-interview" className="hover:text-white transition-colors">Interview</Link>
-              <Link href="/income" className="hover:text-white transition-colors">Earn Online</Link>
-              <Link href="/about" className="hover:text-white transition-colors">About</Link>
-              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
-              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
-              <Link href="/refund" className="hover:text-white transition-colors">Refund</Link>
-            </div>
-            <p className="text-white/20 text-sm">© {new Date().getFullYear()} CraftlyCV · Built for job seekers worldwide</p>
+            <span className="text-sm font-semibold text-[#9CA3AF]">CraftlyCV</span>
           </div>
-        </footer>
-
-      </div>
-    </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-[#6B7280]">
+            <Link href="/pricing" className="hover:text-[#9CA3AF] transition-colors">Pricing</Link>
+            <Link href="/privacy" className="hover:text-[#9CA3AF] transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-[#9CA3AF] transition-colors">Terms</Link>
+            <Link href="/about" className="hover:text-[#9CA3AF] transition-colors">About</Link>
+          </div>
+          <p className="text-xs text-[#6B7280]">© {new Date().getFullYear()} CraftlyCV</p>
+        </div>
+      </footer>
+    </main>
   )
 }

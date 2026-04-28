@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { FileText, Check, Loader2, ArrowRight, Sparkles, Globe } from 'lucide-react'
+import { FileText, Check, Loader2, ArrowRight, Sparkles, Globe, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { PLANS, PLANS_LIST, type PlanId } from '@/lib/plans'
 
@@ -18,6 +18,90 @@ const LANGUAGE_OPTIONS = [
   { value: 'hi', label: 'हिंदी', native: 'Hindi', flag: '🇮🇳' },
 ]
 
+// Username validation
+function validateUsername(username: string): { valid: boolean; error?: string } {
+  if (!username || username.length < 3) {
+    return { valid: false, error: 'Username must be at least 3 characters' }
+  }
+  if (username.length > 20) {
+    return { valid: false, error: 'Username must be 20 characters or less' }
+  }
+  if (!/^[a-z0-9]+$/.test(username)) {
+    return { valid: false, error: 'Only letters and numbers allowed' }
+  }
+  return { valid: true }
+}
+
+// Check username availability
+async function checkUsernameAvailable(supabase: ReturnType<typeof createClient>, username: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('username', username.toLowerCase())
+    .maybeSingle()
+  return !data
+}
+
+// Fallback profile creation (server-side safe via admin client would be better,
+// but since we're in a client component, we use the RPC or direct insert)
+async function ensureProfileExists(supabase: ReturnType<typeof createClient>, userId: string, email: string): Promise<{ success: boolean; error?: string }> {
+  // Check if profile already exists
+  const { data: existing } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (existing) {
+    return { success: true }
+  }
+
+  // Generate username from email
+  const emailPrefix = email?.split('@')[0] || 'user'
+  const baseUsername = emailPrefix.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'user'
+  let username = baseUsername
+  let counter = 0
+
+  // Find available username
+  while (true) {
+    const available = await checkUsernameAvailable(supabase, username)
+    if (available) break
+    counter++
+    username = `${baseUsername}${counter}`
+    if (counter > 1000) {
+      username = `user_${userId.slice(0, 8)}`
+      break
+    }
+  }
+
+  // Try to insert profile directly (RLS may block this, but worth trying as fallback)
+  const { error: insertError } = await supabase
+    .from('profiles')
+    .insert({
+      id: userId,
+      email: email,
+      username: username,
+      scans: 3,
+      plan: 'free',
+      role: 'user',
+      country: 'US',
+      language: 'en',
+      currency: 'USD',
+      professional_track: 'general',
+      experience_level: 'mid',
+      onboarding_completed: false,
+      onboarding_step: 0,
+    })
+
+  if (insertError) {
+    // If direct insert fails (likely RLS), try via RPC if it exists
+    console.error('Direct profile insert failed:', insertError)
+    return { success: false, error: 'Could not create profile. Please try again.' }
+  }
+
+  return { success: true }
+}
+
 export default function OnboardingPage() {
   const [step, setStep] = useState(1)
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('free')
@@ -25,35 +109,98 @@ export default function OnboardingPage() {
   const [inputLang, setInputLang] = useState('en')
   const [outputLang, setOutputLang] = useState('en')
   const [loading, setLoading] = useState(false)
+  const [usernameChecking, setUsernameChecking] = useState(false)
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
+  const [email, setEmail] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
+
+  // Debounced username check
+  const checkUsername = useCallback(async (value: string) => {
+    const validation = validateUsername(value)
+    if (!validation.valid) {
+      setUsernameAvailable(null)
+      return
+    }
+
+    setUsernameChecking(true)
+    const available = await checkUsernameAvailable(supabase, value)
+    setUsernameAvailable(available)
+    setUsernameChecking(false)
+  }, [supabase])
 
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/auth'); return }
       setUserId(user.id)
+      setEmail(user.email || null)
+
+      // Ensure profile exists (fallback if trigger failed)
+      const profileResult = await ensureProfileExists(supabase, user.id, user.email || '')
+      if (!profileResult.success) {
+        toast.error(profileResult.error || 'Failed to initialize profile')
+      }
+
+      // Check onboarding status
       const { data: profile } = await supabase
         .from('profiles')
-        .select('onboarding_completed')
+        .select('onboarding_completed, username')
         .eq('id', user.id)
         .single()
-      if (profile?.onboarding_completed === true) router.push('/dashboard')
-      const emailPrefix = user.email?.split('@')[0] || ''
-      setUsername(emailPrefix.replace(/[^a-z0-9]/gi, '').toLowerCase())
+
+      if (profile?.onboarding_completed === true) {
+        router.push('/dashboard')
+        return
+      }
+
+      // Pre-fill username from email if no username set
+      if (!profile?.username) {
+        const emailPrefix = user.email?.split('@')[0] || ''
+        setUsername(emailPrefix.replace(/[^a-z0-9]/gi, '').toLowerCase())
+      } else {
+        setUsername(profile.username)
+      }
     }
     checkAuth()
   }, [router, supabase])
 
+  // Check username on change (debounced via useCallback)
+  useEffect(() => {
+    if (username && username.length >= 3) {
+      const timer = setTimeout(() => checkUsername(username), 300)
+      return () => clearTimeout(timer)
+    }
+  }, [username, checkUsername])
+
   const handleComplete = async () => {
     if (!userId) return
-    if (!username || username.length < 3) {
-      toast.error('Username must be at least 3 characters.')
+
+    // Validate username
+    const validation = validateUsername(username)
+    if (!validation.valid) {
+      toast.error(validation.error)
       return
     }
+
+    // Double-check username availability before submitting
+    if (usernameAvailable === false) {
+      toast.error('Username is already taken. Please choose another.')
+      return
+    }
+
     setLoading(true)
+
     try {
+      // Final availability check
+      const available = await checkUsernameAvailable(supabase, username)
+      if (!available) {
+        toast.error('Username is already taken. Please choose another.')
+        setLoading(false)
+        return
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -61,8 +208,6 @@ export default function OnboardingPage() {
           plan: selectedPlan,
           onboarding_completed: true,
           onboarding_step: 2,
-          input_language: inputLang,
-          output_language: outputLang,
           updated_at: new Date().toISOString(),
         })
         .eq('id', userId)
@@ -70,22 +215,31 @@ export default function OnboardingPage() {
       if (error) {
         if (error.code === '23505') {
           toast.error('Username is already taken. Please choose another.')
+        } else if (error.code === '42501') {
+          toast.error('Permission denied. Please sign out and sign in again.')
         } else {
-          toast.error('Something went wrong. Please try again.')
+          toast.error(`Update failed: ${error.message}`)
           console.error('Onboarding error:', error)
         }
         setLoading(false)
         return
       }
 
-      toast.success('Welcome to CraftlyCV! You have 3 free scans.')
-      if (selectedPlan !== 'free') router.push('/billing')
-      else router.push('/dashboard')
+      toast.success('Welcome to CraftlyCV! You have 3 free scans to get started.')
+      if (selectedPlan !== 'free') {
+        router.push('/billing')
+      } else {
+        router.push('/dashboard')
+      }
     } catch (err) {
-      toast.error('Something went wrong')
+      console.error('Onboarding error:', err)
+      toast.error('Something went wrong. Please try again.')
       setLoading(false)
     }
   }
+
+  const usernameValidation = validateUsername(username)
+  const canProceedStep2 = username.length >= 3 && usernameValidation.valid && !usernameChecking && (usernameAvailable === true || usernameAvailable === null)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
@@ -237,7 +391,7 @@ export default function OnboardingPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Your Profile URL</CardTitle>
-                <CardDescription>craftlycv.in/u/{username || 'yourname'}</CardDescription>
+                <CardDescription>craftlycv.com/u/{username || 'yourname'}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -248,7 +402,34 @@ export default function OnboardingPage() {
                     onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
                     placeholder="yourname"
                     maxLength={20}
+                    className={usernameAvailable === false ? 'border-red-500' : usernameAvailable === true ? 'border-green-500' : ''}
                   />
+                  <div className="flex items-center gap-2">
+                    {!usernameValidation.valid && username.length > 0 && (
+                      <p className="text-xs text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {usernameValidation.error}
+                      </p>
+                    )}
+                    {usernameChecking && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Checking...
+                      </p>
+                    )}
+                    {!usernameChecking && usernameAvailable === true && username.length >= 3 && (
+                      <p className="text-xs text-green-500 flex items-center gap-1">
+                        <Check className="h-3 w-3" />
+                        Username available
+                      </p>
+                    )}
+                    {!usernameChecking && usernameAvailable === false && username.length >= 3 && (
+                      <p className="text-xs text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Username taken
+                      </p>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Letters and numbers only, 3–20 characters
                   </p>
@@ -277,7 +458,7 @@ export default function OnboardingPage() {
               <Button variant="outline" onClick={() => setStep(1.5)}>Back</Button>
               <Button
                 onClick={handleComplete}
-                disabled={loading || !username || username.length < 3}
+                disabled={loading || !canProceedStep2}
               >
                 {loading
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Setting up...</>

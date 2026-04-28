@@ -4,27 +4,27 @@ export const canAnalyze = (profile: { plan: string; scans: number }) =>
   profile.plan !== 'free' || profile.scans > 0
 
 export const canTailor = (profile: { plan: string; scans: number }) =>
-  ['pro', 'lifetime', 'starter'].includes(profile.plan) || profile.scans > 1
+  ['pro', 'lifetime', 'career_launch', 'niche_pro', 'concierge'].includes(profile.plan) || profile.scans > 1
 
 export const canExportClean = (profile: { plan: string }) =>
   profile.plan !== 'free'
 
 export const canUseMockInterview = (profile: { plan: string }) =>
-  ['pro', 'lifetime'].includes(profile.plan)
+  ['pro', 'lifetime', 'niche_pro', 'concierge'].includes(profile.plan)
 
 export const canUseLinkedIn = (profile: { plan: string }) =>
-  ['pro', 'lifetime'].includes(profile.plan)
+  ['pro', 'lifetime', 'niche_pro', 'concierge'].includes(profile.plan)
 
 export const canUseCareerHub = (profile: { plan: string }) =>
-  ['pro', 'lifetime'].includes(profile.plan)
+  ['pro', 'lifetime', 'niche_pro', 'concierge'].includes(profile.plan)
 
 export const hasWatermark = (profile: { plan: string }) =>
   profile.plan === 'free'
 
 export const isPro = (profile: { plan: string } | null | undefined) =>
-  profile !== null && ['pro', 'lifetime'].includes(profile?.plan ?? '')
+  profile !== null && ['pro', 'lifetime', 'niche_pro', 'concierge'].includes(profile?.plan ?? '')
 
-export type PlanId = 'free' | 'starter' | 'pro' | 'lifetime'
+export type PlanId = 'free' | 'career_launch' | 'niche_pro' | 'concierge'
 
 export interface PlanConfig {
   id: PlanId
@@ -37,7 +37,7 @@ export interface PlanConfig {
   features: string[]
 }
 
-// Typed as Record so PLANS['free'] works in onboarding page
+// Plan IDs MUST match database schema: CHECK (plan IN ('free', 'career_launch', 'niche_pro', 'concierge'))
 export const PLANS: Record<PlanId, PlanConfig> = {
   free: {
     id: 'free',
@@ -47,17 +47,17 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     description: 'Diagnose your resume for free',
     features: ['3 lifetime scans', 'Basic ATS analysis', 'Watermarked exports'],
   },
-  starter: {
-    id: 'starter',
-    name: 'Starter Pack',
+  career_launch: {
+    id: 'career_launch',
+    name: 'Career Launch',
     price: 199,
     priceLabel: '₹199 one-time',
     badge: 'One-time',
     description: 'For active job seekers',
     features: ['10 scan credits', 'Tailored exports', 'ATS-safe PDF', 'No watermark'],
   },
-  pro: {
-    id: 'pro',
+  niche_pro: {
+    id: 'niche_pro',
     name: 'Pro',
     price: 499,
     priceLabel: '₹499/month',
@@ -66,8 +66,8 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     description: 'For serious career movers',
     features: ['Unlimited scans', 'Unlimited tailoring', 'All modules', 'No watermark', 'Language support'],
   },
-  lifetime: {
-    id: 'lifetime',
+  concierge: {
+    id: 'concierge',
     name: 'Lifetime',
     price: 2999,
     priceLabel: '₹2999 one-time',

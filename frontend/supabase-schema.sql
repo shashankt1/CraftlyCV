@@ -428,7 +428,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- ROW LEVEL SECURITY (RLS)
--- ═══════════════════════════════════════════════════════════════════════════════
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_resumes ENABLE ROW LEVEL SECURITY;
@@ -443,45 +442,111 @@ ALTER TABLE processed_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
 
--- Profiles
-CREATE POLICY "profiles_select_own" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "profiles_update_own" ON profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "profiles_admin_all" ON profiles FOR ALL USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- PROFILES RLS: Fixed for trigger-created profiles and edge cases
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- SELECT: Users can read their own profile (trigger creates with service role)
+CREATE POLICY "profiles_select_own" ON profiles
+  FOR SELECT USING (auth.uid() = id);
+
+-- UPDATE: Users can update their own profile
+CREATE POLICY "profiles_update_own" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+-- INSERT: Allow users to insert their own profile (fallback for manual creation)
+-- NOTE: The WITH CHECK matches the row being inserted, id = auth.uid() ensures ownership
+CREATE POLICY "profiles_insert_own" ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- DELETE: Users can delete their own profile (account deletion)
+CREATE POLICY "profiles_delete_own" ON profiles
+  FOR DELETE USING (auth.uid() = id);
+
+-- ADMIN: Full access for admins (subquery prevents null reference issues)
+CREATE POLICY "profiles_admin_all" ON profiles
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM profiles AS p
+      WHERE p.id = auth.uid() AND p.role = 'admin'
+    )
+  );
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- OTHER TABLE RLS POLICIES
+-- ═══════════════════════════════════════════════════════════════════════════════
 
 -- Master Resumes
-CREATE POLICY "master_resumes_own" ON master_resumes FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "master_resumes_own" ON master_resumes
+  FOR ALL USING (auth.uid() = user_id);
 
 -- Tailored Versions
-CREATE POLICY "tailored_versions_own" ON tailored_versions FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "tailored_versions_own" ON tailored_versions
+  FOR ALL USING (auth.uid() = user_id);
 
 -- Match Reports
-CREATE POLICY "match_reports_own" ON match_reports FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "match_reports_own" ON match_reports
+  FOR ALL USING (auth.uid() = user_id);
 
 -- Niche Templates (public read, admin write)
-CREATE POLICY "niche_templates_public" ON niche_templates FOR SELECT USING (true);
-CREATE POLICY "niche_templates_admin" ON niche_templates FOR ALL USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "niche_templates_public" ON niche_templates
+  FOR SELECT USING (true);
+CREATE POLICY "niche_templates_admin" ON niche_templates
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM profiles AS p
+      WHERE p.id = auth.uid() AND p.role = 'admin'
+    )
+  );
 
 -- Export History
-CREATE POLICY "export_history_own" ON export_history FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "export_history_own" ON export_history
+  FOR ALL USING (auth.uid() = user_id);
 
 -- Payment Transactions
-CREATE POLICY "transactions_own" ON payment_transactions FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "transactions_admin" ON payment_transactions FOR SELECT USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
-CREATE POLICY "transactions_insert_service" ON payment_transactions FOR INSERT WITH CHECK (true);
+CREATE POLICY "transactions_own" ON payment_transactions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "transactions_admin" ON payment_transactions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM profiles AS p
+      WHERE p.id = auth.uid() AND p.role = 'admin'
+    )
+  );
+CREATE POLICY "transactions_insert_service" ON payment_transactions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Scan Logs
-CREATE POLICY "scan_logs_own" ON scan_logs FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "scan_logs_admin" ON scan_logs FOR SELECT USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "scan_logs_own" ON scan_logs
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "scan_logs_admin" ON scan_logs
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM profiles AS p
+      WHERE p.id = auth.uid() AND p.role = 'admin'
+    )
+  );
 
 -- Rate Limits
-CREATE POLICY "rate_limits_own" ON rate_limits FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "rate_limits_own" ON rate_limits
+  FOR ALL USING (auth.uid() = user_id);
 
 -- Admin Audit Logs
-CREATE POLICY "audit_logs_admin" ON admin_audit_logs FOR SELECT USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "audit_logs_admin" ON admin_audit_logs
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM profiles AS p
+      WHERE p.id = auth.uid() AND p.role = 'admin'
+    )
+  );
 
 -- Processed Payments (service role only)
-CREATE POLICY "processed_payments_service" ON processed_payments FOR ALL USING (true);
+CREATE POLICY "processed_payments_service" ON processed_payments
+  FOR ALL USING (auth.uid() IS NOT NULL);
+
+-- Referrals
+CREATE POLICY "referrals_own" ON referrals
+  FOR ALL USING (auth.uid() = referrer_id OR auth.uid() = referred_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- INDEXES
@@ -523,3 +588,131 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER profiles_updated_at BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER master_resumes_updated_at BEFORE UPDATE ON master_resumes FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER tailored_versions_updated_at BEFORE UPDATE ON tailored_versions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- TRIGGER: Auto-create profile on auth.users insert
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_email TEXT;
+  v_username_base TEXT;
+  v_username TEXT;
+  v_referral_code TEXT;
+  v_counter INTEGER := 0;
+BEGIN
+  -- Get email safely (handle nulls)
+  v_email := COALESCE(NEW.email, '');
+
+  -- Generate base username from email prefix
+  v_username_base := COALESCE(
+    REGEXP_REPLACE(
+      LOWER(SPLIT_PART(v_email, '@', 1)),
+      '[^a-z0-9]', '', 'g'
+    ),
+    'user'
+  );
+
+  -- Handle empty username base
+  IF v_username_base = '' OR v_username_base IS NULL THEN
+    v_username_base := 'user';
+  END IF;
+
+  -- Generate unique username with suffix if needed
+  v_username := v_username_base;
+  WHILE EXISTS (SELECT 1 FROM profiles WHERE username = v_username) LOOP
+    v_counter := v_counter + 1;
+    v_username := v_username_base || v_counter::TEXT;
+    -- Safety valve: if counter gets too high, use UUID short form
+    IF v_counter > 1000 THEN
+      v_username := 'user_' || LEFT(NEW.id::TEXT, 8);
+      EXIT;
+    END IF;
+  END LOOP;
+
+  -- Generate unique referral code
+  v_referral_code := COALESCE(
+    UPPER(SUBSTR(v_username_base, 1, 8)) || '_' || SUBSTR(NEW.id::TEXT, 1, 4),
+    'REF_' || SUBSTR(NEW.id::TEXT, 1, 8)
+  );
+
+  -- Handle duplicates for referral code too
+  WHILE EXISTS (SELECT 1 FROM profiles WHERE referral_code = v_referral_code) LOOP
+    v_referral_code := v_referral_code || '_' || FLOOR(RANDOM() * 10)::TEXT;
+  END LOOP;
+
+  -- Insert profile (SERVICE ROLE BYPASSES RLS, so this always works)
+  INSERT INTO profiles (
+    id,
+    email,
+    username,
+    scans,
+    plan,
+    role,
+    country,
+    language,
+    currency,
+    professional_track,
+    experience_level,
+    onboarding_completed,
+    onboarding_step,
+    referral_code,
+    last_active_at,
+    created_at,
+    updated_at
+  ) VALUES (
+    NEW.id,
+    v_email,
+    v_username,
+    3,                   -- starter scans
+    'free',              -- default plan
+    'user',              -- default role
+    'US',                -- default country
+    'en',                -- default language
+    'USD',               -- default currency
+    'general',           -- default professional track
+    'mid',               -- default experience level
+    false,               -- onboarding not complete
+    0,                   -- starting at step 0
+    v_referral_code,     -- unique referral code
+    NOW(),
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (id) DO NOTHING;  -- Idempotent: handles race conditions
+
+  RETURN NEW;
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Log the error but don't fail the auth process
+    RAISE NOTICE 'handle_new_user failed: % %', SQLERRM, SQLSTATE;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop existing trigger if present, then create fresh
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- REPAIR BROKEN RLS: Force service role bypass for profile creation trigger
+-- The trigger runs as the service role, so we grant SERVICE ROLE permission
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- Allow service role to insert profiles regardless of RLS
+GRANT USAGE ON SCHEMA public TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON profiles TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON master_resumes TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON tailored_versions TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON match_reports TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON scan_logs TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON export_history TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON payment_transactions TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON referrals TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON rate_limits TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON admin_audit_logs TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON processed_payments TO service_role;
+GRANT INSERT, SELECT, UPDATE, DELETE ON niche_templates TO service_role;

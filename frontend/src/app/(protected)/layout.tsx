@@ -147,8 +147,77 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/auth'); return }
 
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (!data) { router.push('/onboarding'); return }
+      let { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+
+      // FALLBACK: If profile doesn't exist, try to create it
+      if (!data) {
+        console.warn('Profile missing, attempting fallback creation...')
+
+        // Generate username from email
+        const emailPrefix = user.email?.split('@')[0] || 'user'
+        const baseUsername = emailPrefix.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'user'
+        let username = baseUsername
+        let counter = 0
+
+        // Find available username
+        while (counter <= 1000) {
+          const { data: existing } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('username', username)
+            .maybeSingle()
+
+          if (!existing) break
+          counter++
+          username = `${baseUsername}${counter}`
+        }
+        if (counter > 1000) username = `user_${user.id.slice(0, 8)}`
+
+        // Generate referral code
+        const referralCode = `REF_${user.id.slice(0, 8).toUpperCase()}`
+
+        // Try to insert profile directly
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email,
+            username: username,
+            scans: 3,
+            plan: 'free',
+            role: 'user',
+            country: 'US',
+            language: 'en',
+            currency: 'USD',
+            professional_track: 'general',
+            experience_level: 'mid',
+            onboarding_completed: false,
+            onboarding_step: 0,
+            referral_code: referralCode,
+          })
+
+        if (insertError) {
+          // If insert failed (e.g., RLS blocking), redirect to onboarding
+          // which has its own fallback logic
+          console.error('Fallback profile creation failed:', insertError)
+          router.push('/onboarding')
+          return
+        }
+
+        // Re-fetch the newly created profile
+        const { data: newProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+
+        if (!newProfile) {
+          router.push('/onboarding')
+          return
+        }
+
+        data = newProfile
+      }
 
       setProfile(data)
       if (data?.role === 'admin') setIsAdmin(true)
