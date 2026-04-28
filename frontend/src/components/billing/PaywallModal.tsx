@@ -20,9 +20,9 @@ interface PaywallModalProps {
 }
 
 export function PaywallModal({ open, onClose, featureName }: PaywallModalProps) {
-  const starterPlan = PLANS_LIST.find(p => p.id === 'starter')
-  const proPlan = PLANS_LIST.find(p => p.id === 'pro')
-  const lifetimePlan = PLANS_LIST.find(p => p.id === 'lifetime')
+  const starterPlan = PLANS_LIST.find(p => p.id === 'career_launch')
+  const proPlan = PLANS_LIST.find(p => p.id === 'niche_pro')
+  const lifetimePlan = PLANS_LIST.find(p => p.id === 'concierge')
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -103,7 +103,7 @@ export function PaywallModal({ open, onClose, featureName }: PaywallModalProps) 
 
 // Helper component for inline upgrade buttons
 interface UpgradeButtonProps {
-  planId: 'starter' | 'pro' | 'lifetime'
+  planId: 'career_launch' | 'niche_pro' | 'concierge'
   children: React.ReactNode
   className?: string
 }

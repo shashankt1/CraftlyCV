@@ -61,16 +61,16 @@ interface Transaction {
 
 const PLAN_ICONS: Record<string, React.ReactNode> = {
   free: <Star className="w-5 h-5" />,
-  starter: <Zap className="w-5 h-5" />,
-  pro: <Sparkles className="w-5 h-5" />,
-  lifetime: <Crown className="w-5 h-5" />,
+  career_launch: <Zap className="w-5 h-5" />,
+  niche_pro: <Sparkles className="w-5 h-5" />,
+  concierge: <Crown className="w-5 h-5" />,
 }
 
 const PLAN_GRADIENTS: Record<string, string> = {
   free: 'from-slate-600/20 to-slate-700/10',
-  starter: 'from-amber-600/20 to-orange-700/10',
-  pro: 'from-indigo-600/20 to-violet-700/10',
-  lifetime: 'from-amber-500/20 to-orange-600/10',
+  career_launch: 'from-amber-600/20 to-orange-700/10',
+  niche_pro: 'from-indigo-600/20 to-violet-700/10',
+  concierge: 'from-amber-500/20 to-orange-600/10',
 }
 
 export default function BillingPage() {
@@ -84,12 +84,12 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [cancelling, setCancelling] = useState(false)
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'lifetime'>('monthly')
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'concierge'>('monthly')
 
   // Auto-upgrade if param present
   useEffect(() => {
     const upgrade = searchParams.get('upgrade')
-    if (upgrade && ['starter', 'pro', 'lifetime'].includes(upgrade)) {
+    if (upgrade && ['career_launch', 'niche_pro', 'concierge'].includes(upgrade)) {
       loadAndOpen(upgrade)
       router.replace('/billing')
     }
@@ -173,7 +173,7 @@ export default function BillingPage() {
 
   // Build displayed plans based on billing cycle preference
   const displayedPlans = PLANS_LIST.filter(p => {
-    if (billingCycle === 'lifetime') return p.id !== 'pro'
+    if (billingCycle === 'concierge') return p.id !== 'niche_pro'
     return true
   })
 
@@ -199,7 +199,7 @@ export default function BillingPage() {
   }
 
   const currentPlan = PLANS_LIST.find(p => p.id === profile?.plan) || PLANS_LIST[0]
-  const isLifetime = profile?.plan === 'lifetime'
+  const isLifetime = profile?.plan === 'concierge'
   const isActivePro = isPro(profile)
 
   return (
@@ -252,8 +252,8 @@ export default function BillingPage() {
                     {currentPlan.badge && (
                       <Badge className={cn(
                         'text-xs',
-                        currentPlan.id === 'pro' ? 'bg-indigo-600 text-white' :
-                        currentPlan.id === 'lifetime' ? 'bg-amber-600 text-white' :
+                        currentPlan.id === 'niche_pro' ? 'bg-indigo-600 text-white' :
+                        currentPlan.id === 'concierge' ? 'bg-amber-600 text-white' :
                         'bg-zinc-700 text-zinc-200'
                       )}>
                         {currentPlan.badge}
@@ -286,7 +286,7 @@ export default function BillingPage() {
                     <Button
                       size="lg"
                       className="bg-indigo-600 hover:bg-indigo-500 text-white"
-                      onClick={() => handleUpgrade('pro')}
+                      onClick={() => handleUpgrade('niche_pro')}
                     >
                       <Zap className="w-4 h-4 mr-2" />
                       Upgrade to Pro
@@ -305,7 +305,7 @@ export default function BillingPage() {
                   <Button
                     size="lg"
                     className="bg-indigo-600 hover:bg-indigo-500 text-white"
-                    onClick={() => handleUpgrade('pro')}
+                    onClick={() => handleUpgrade('niche_pro')}
                   >
                     <Zap className="w-4 h-4 mr-2" />
                     Upgrade Now
@@ -343,8 +343,8 @@ export default function BillingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
             {displayedPlans.map((plan) => {
               const isCurrentPlan = profile?.plan === plan.id
-              const isProPlan = plan.id === 'pro'
-              const isLifetimePlan = plan.id === 'lifetime'
+              const isProPlan = plan.id === 'niche_pro'
+              const isLifetimePlan = plan.id === 'concierge'
 
               return (
                 <Card
@@ -373,9 +373,9 @@ export default function BillingPage() {
                       <div className="absolute -top-2 left-4">
                         <Badge className={cn(
                           'shadow-lg',
-                          plan.id === 'pro' ? 'bg-indigo-600 text-white' :
-                          plan.id === 'lifetime' ? 'bg-amber-600 text-white' :
-                          plan.id === 'starter' ? 'bg-zinc-700 text-zinc-200' :
+                          plan.id === 'niche_pro' ? 'bg-indigo-600 text-white' :
+                          plan.id === 'concierge' ? 'bg-amber-600 text-white' :
+                          plan.id === 'career_launch' ? 'bg-zinc-700 text-zinc-200' :
                           'bg-zinc-600 text-zinc-200'
                         )}>
                           {plan.badge}
@@ -388,8 +388,8 @@ export default function BillingPage() {
                       <div className={cn(
                         'w-10 h-10 rounded-xl flex items-center justify-center',
                         plan.id === 'free' ? 'bg-zinc-700/50 text-zinc-400' :
-                        plan.id === 'starter' ? 'bg-amber-500/20 text-amber-400' :
-                        plan.id === 'pro' ? 'bg-indigo-500/20 text-indigo-400' :
+                        plan.id === 'career_launch' ? 'bg-amber-500/20 text-amber-400' :
+                        plan.id === 'niche_pro' ? 'bg-indigo-500/20 text-indigo-400' :
                         'bg-amber-500/20 text-amber-400'
                       )}>
                         {PLAN_ICONS[plan.id] || <Star className="w-5 h-5" />}

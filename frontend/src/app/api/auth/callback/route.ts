@@ -98,20 +98,25 @@ export async function GET(request: Request) {
 
         if (referrer && referrer.id !== userId) {
           // Update referrer's scan count (award 1 scan)
-          await admin.rpc('add_scans', { p_user_id: referrer.id, p_amount: 1, p_action: 'referral' }).catch(() => {})
+          try {
+            await admin.rpc('add_scans', { p_user_id: referrer.id, p_amount: 1, p_action: 'referral' })
+          } catch { /* non-blocking */ }
 
           // Record referral
-          await admin.from('referrals').insert({
-            referrer_id: referrer.id,
-            referred_id: userId,
-          }).catch(() => {})
+          try {
+            await admin.from('referrals').insert({
+              referrer_id: referrer.id,
+              referred_id: userId,
+            })
+          } catch { /* non-blocking */ }
 
           // Mark referred user
-          await admin
-            .from('profiles')
-            .update({ referred_by: referrer.id })
-            .eq('id', userId)
-            .catch(() => {})
+          try {
+            await admin
+              .from('profiles')
+              .update({ referred_by: referrer.id })
+              .eq('id', userId)
+          } catch { /* non-blocking */ }
         }
       } catch (refErr) {
         // Non-blocking — don't fail the auth callback
