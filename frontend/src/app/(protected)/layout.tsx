@@ -16,12 +16,13 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import {
   FileText, LayoutDashboard, Target, Sparkles, FileOutput,
-  CreditCard, Settings, Sun, Moon, Menu, X, ChevronLeft,
+  CreditCard, Settings, Menu, X, ChevronLeft,
   LogOut, Plus, Shield, BarChart3, ChevronRight, MoreHorizontal,
   Briefcase, Mic, Linkedin, Compass, Gift, Zap, Crown,
   TrendingUp, Users, Hexagon
 } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { ThemeToggle } from '@/components/shared/ThemeToggle'
+import { Logo } from '@/components/shared/Logo'
 import { toast } from 'sonner'
 
 const NAV_ITEMS = [
@@ -128,7 +129,6 @@ function ScanCounterChip({ scans, onClick }: { scans: number; onClick?: () => vo
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const supabase = createClient()
-  const { theme, setTheme } = useTheme()
   const pathname = usePathname()
 
   const [collapsed, setCollapsed] = useState(() => {
@@ -277,12 +277,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       )}>
         {/* Logo */}
         <div className="flex items-center h-16 border-b border-zinc-800 px-4 shrink-0">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-              <FileText className="h-5 w-5 text-white" />
-            </div>
-            {!collapsed && <span className="text-base font-bold text-zinc-100 tracking-tight">CraftlyCV</span>}
-          </Link>
+          <Logo href="/dashboard" size="sm" />
         </div>
 
         {/* Scans badge */}
@@ -339,14 +334,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         <div className="fixed inset-0 bg-black/60 z-50 lg:hidden" onClick={() => setMobileOpen(false)}>
           <aside className="absolute left-0 top-0 h-full w-72 bg-zinc-900 border-r border-zinc-800 p-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
-              <Link href="/dashboard" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-white" />
-                </div>
-                <span className="text-base font-bold text-zinc-100">CraftlyCV</span>
-              </Link>
-              <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
-                <X className="h-5 w-5" />
+              <Logo href="/dashboard" size="sm" onClick={() => setMobileOpen(false)} />
               </Button>
             </div>
             <nav className="space-y-0.5">
@@ -417,9 +405,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               </Link>
             </Button>
 
-            <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="text-zinc-400">
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
+            <ThemeToggle className="text-zinc-400" />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

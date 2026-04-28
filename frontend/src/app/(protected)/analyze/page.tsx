@@ -14,13 +14,23 @@ interface ATSResult {
   keyword_score: number
   formatting_score: number
   readability_score: number
+  verdict: string
   missing_keywords: string[]
   matched_keywords: string[]
+  hard_issues: Array<{ issue: string; impact: string; fix: string }>
+  bullet_rewrites: Array<{ original: string; problem: string; rewrite: string }>
+  section_scores: {
+    summary: number
+    skills: number
+    experience: number
+    education: number
+    projects: number
+  }
   formatting_risks: string[]
-  section_feedback: Array<{ section: string; score: number; feedback: string; suggestions: string[] }>
-  proof_gaps: string[]
-  overall_summary: string
+  achievement_gaps: string[]
   top_3_improvements: string[]
+  estimated_pass_rate: string
+  recruiter_first_impression: string
   share_id: string
 }
 

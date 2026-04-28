@@ -1,13 +1,15 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { FileText, Github, Twitter } from 'lucide-react'
+import { Github, Twitter } from 'lucide-react'
+import { Logo } from '@/components/shared/Logo'
+import { ThemeToggle } from '@/components/shared/ThemeToggle'
 
 export const metadata: Metadata = {
   title: 'Free ATS Resume Checker | CraftlyCV — AI Job Application Engine',
   description: 'Check your resume\'s ATS score free. CraftlyCV diagnoses ATS rejection, tailors your resume for any job, and helps you get more interviews. Trusted by job seekers across India.',
   keywords: ['ATS score checker', 'free ATS scanner', 'resume analyzer', 'ATS resume checker', 'CraftlyCV'],
   authors: [{ name: 'CraftlyCV' }],
-  icons: { icon: '/favicon.svg' },
+  icons: { icon: '/logo.jpeg' },
   openGraph: {
     type: 'website',
     locale: 'en_IN',
@@ -32,12 +34,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <header className="fixed top-0 inset-x-0 z-50 border-b border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-              <FileText className="h-4 w-4 text-white" />
-            </div>
-            <span className="text-lg font-bold">CraftlyCV</span>
-          </Link>
+          <Logo size="md" />
 
           {/* Center links */}
           <div className="hidden md:flex items-center gap-8">
@@ -48,6 +45,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
 
           {/* Right CTA */}
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <Link
               href="/auth"
               className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm font-bold flex items-center justify-center hover:bg-blue-500 transition-all hover:scale-105 hover:-translate-y-0.5 shadow-lg shadow-blue-600/25"
@@ -66,12 +64,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {/* Brand */}
             <div className="col-span-2 md:col-span-1 space-y-3">
-              <Link href="/" className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-                  <FileText className="h-4 w-4 text-white" />
-                </div>
-                <span className="text-lg font-bold">CraftlyCV</span>
-              </Link>
+              <Logo size="sm" text={false} />
               <p className="text-sm text-white/40 max-w-xs">The AI job application engine. Stop getting rejected. Start getting interviews.</p>
             </div>
 

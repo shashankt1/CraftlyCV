@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { FileText, ArrowLeft, Users, Zap, Heart, Rocket, Target, TrendingUp, CheckCircle, MessageSquare, Search, DollarSign } from 'lucide-react'
+import { ArrowLeft, Users, Zap, Heart, Rocket, Target, TrendingUp, CheckCircle, MessageSquare, Search, DollarSign } from 'lucide-react'
+import { Logo } from '@/components/shared/Logo'
+import { ThemeToggle } from '@/components/shared/ThemeToggle'
 
 export default function AboutPage() {
   return (
@@ -9,15 +11,13 @@ export default function AboutPage() {
       {/* Nav */}
       <nav className="border-b bg-white dark:bg-slate-900 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-xl font-black text-slate-900 dark:text-white">CraftlyCV</span>
-          </Link>
-          <Link href="/" className="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
-            ← Back to Home
-          </Link>
+          <Logo href="/" size="sm" />
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <Link href="/" className="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+              ← Back to Home
+            </Link>
+          </div>
         </div>
       </nav>
 

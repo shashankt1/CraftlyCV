@@ -20,6 +20,8 @@ import {
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useAppStore } from '@/lib/store'
+import { ThemeToggle } from '@/components/shared/ThemeToggle'
+import { Logo } from '@/components/shared/Logo'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -49,7 +51,6 @@ export function DashboardLayout({ children, profile, onSignOut, isAdmin }: Dashb
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
-  const { theme, setTheme } = useTheme()
   const { gigs, sidebarOpen, toggleSidebar } = useAppStore()
 
   const plan = profile.plan === 'pro' || profile.plan === 'enterprise'
@@ -66,12 +67,7 @@ export function DashboardLayout({ children, profile, onSignOut, isAdmin }: Dashb
       >
         {/* Logo */}
         <div className={cn('flex items-center h-16 border-b px-4', collapsed ? 'justify-center' : 'justify-between')}>
-          <Link href="/dashboard" className="flex items-center space-x-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-              <FileText className="h-6 w-6 text-white" />
-            </div>
-            {!collapsed && <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">CraftlyCV</span>}
-          </Link>
+          <Logo href="/dashboard" size="sm" text={true} />
           <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="hidden lg:block">
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </Button>
@@ -140,9 +136,7 @@ export function DashboardLayout({ children, profile, onSignOut, isAdmin }: Dashb
                 <DropdownMenuItem onClick={onSignOut} className="text-red-600"><LogOut className="mr-2 h-4 w-4" />Sign Out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
+            <ThemeToggle />
           </div>
         </div>
       </aside>

@@ -21,9 +21,9 @@ export const metadata: Metadata = {
   authors: [{ name: 'CraftlyCV' }],
   creator: 'CraftlyCV',
   icons: {
-    icon: '/favicon.svg',
-    shortcut: '/favicon.svg',
-    apple: '/favicon.svg',
+    icon: '/logo.jpeg',
+    shortcut: '/logo.jpeg',
+    apple: '/logo.jpeg',
   },
   openGraph: {
     type: 'website',

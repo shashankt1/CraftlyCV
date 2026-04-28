@@ -10,9 +10,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { FileText, ArrowLeft, MessageSquare, Loader2, Upload, X, Zap, Sun, Moon, ChevronRight, CheckCircle, Star } from 'lucide-react'
+import { FileText, ArrowLeft, MessageSquare, Loader2, Upload, X, Zap, ChevronRight, CheckCircle, Star } from 'lucide-react'
 import { toast } from 'sonner'
-import { useTheme } from 'next-themes'
+import { ThemeToggle } from '@/components/shared/ThemeToggle'
 
 interface Question { question: string; category: string; difficulty: 'Easy' | 'Medium' | 'Hard' }
 interface AnswerFeedback { score: number; feedback: string; betterAnswer: string }
@@ -36,7 +36,6 @@ export default function InterviewPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const supabase = createClient()
-  const { theme, setTheme } = useTheme()
 
   const [listening, setListening] = useState(false)
   const recognitionRef = useRef<any>(null)
@@ -139,9 +138,7 @@ export default function InterviewPage() {
             <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950 px-4 py-2 rounded-full">
               <Zap className="h-4 w-4 text-blue-600" /><span className="text-sm font-medium text-blue-600">{userScans} scans</span>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="rounded-full">
-              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </Button>
+            <ThemeToggle />
             <Link href="/dashboard"><Button variant="ghost"><ArrowLeft className="mr-2 h-4 w-4" />Dashboard</Button></Link>
           </div>
         </div>

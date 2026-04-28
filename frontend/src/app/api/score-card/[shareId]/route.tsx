@@ -44,9 +44,7 @@ export async function GET(
         >
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px' }}>
-            <div style={{ width: '36px', height: '36px', background: 'linear-gradient(135deg, #3b82f6, #9333ea)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '20px' }}>📄</span>
-            </div>
+            <img src="/logo.jpeg" style={{ width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover' }} />
             <span style={{ fontSize: '22px', fontWeight: 'bold', color: 'white' }}>CraftlyCV</span>
             <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', marginLeft: 'auto' }}>ATS Compatibility Report</span>
           </div>

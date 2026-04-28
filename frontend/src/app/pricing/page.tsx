@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { CheckCircle, Zap, FileText, Crown, Star, Clock, Users, ArrowRight, Flame, Globe, IndianRupee, DollarSign, Shield, RefreshCw } from 'lucide-react'
+import { CheckCircle, Zap, Crown, Star, Clock, Flame, Globe, Shield, RefreshCw, IndianRupee, DollarSign } from 'lucide-react'
+import { Logo } from '@/components/shared/Logo'
+import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import { toast } from 'sonner'
 
 // ── Currency Toggle ────────────────────────────────────────────────────────────
@@ -249,14 +251,10 @@ export default function PricingPage() {
         {/* Nav */}
         <nav className="border-b border-white/6 bg-[#060c1a]/80 backdrop-blur-xl sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-white" />
-              </div>
-              <span className="text-xl font-black text-white">CraftlyCV</span>
-            </Link>
+            <Logo href="/" size="sm" />
             <div className="flex items-center gap-3">
               <CurrencyToggle currency={currency} onChange={setCurrency} />
+              <ThemeToggle />
               {user
                 ? <Link href="/dashboard" className="px-4 py-2 rounded-xl bg-white/8 border border-white/10 text-white/70 hover:text-white text-sm font-medium transition-all">Dashboard</Link>
                 : <Link href="/auth" className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all">Get Started Free</Link>

@@ -11,28 +11,25 @@ interface ATSAnalysisResult {
   keyword_score: number
   formatting_score: number
   readability_score: number
+  verdict: string
   missing_keywords: string[]
   matched_keywords: string[]
+  hard_issues: Array<{ issue: string; impact: string; fix: string }>
+  bullet_rewrites: Array<{ original: string; problem: string; rewrite: string }>
+  section_scores: {
+    summary: number
+    skills: number
+    experience: number
+    education: number
+    projects: number
+  }
   formatting_risks: string[]
-  section_feedback: Array<{ section: string; score: number; feedback: string; suggestions: string[] }>
-  proof_gaps: string[]
-  overall_summary: string
+  achievement_gaps: string[]
   top_3_improvements: string[]
+  estimated_pass_rate: string
+  recruiter_first_impression: string
   share_id: string
   [key: string]: any
-}
-
-const NicheKeywords: Record<string, string[]> = {
-  software_engineer: ['TypeScript', 'CI/CD', 'system design', 'REST APIs', 'cloud platforms', 'Docker', 'Kubernetes'],
-  data_scientist: ['Python', 'machine learning', 'TensorFlow', 'pandas', 'data visualization', 'SQL', 'statistical modeling'],
-  product_manager: ['product strategy', 'roadmap', 'user research', 'OKRs', 'JIRA', 'Agile', 'stakeholder management'],
-  cybersecurity_analyst: ['SIEM', 'penetration testing', 'SOC', 'incident response', 'CompTIA Security+', 'firewall', 'threat analysis'],
-  nursing: ['patient care', 'EMR', 'BLS/ACLS', 'medication administration', 'care coordination', 'vital signs', 'clinical documentation'],
-  devops_engineer: ['Docker', 'Kubernetes', 'Terraform', 'CI/CD', 'AWS', 'Azure', 'monitoring', 'infrastructure as code'],
-  'ui/ux_designer': ['Figma', 'user research', 'wireframing', 'prototyping', 'design systems', 'UX metrics', 'accessibility'],
-  business_analyst: ['requirements gathering', 'SQL', 'data analysis', 'JIRA', 'process mapping', 'stakeholder management', 'Excel'],
-  cloud_architect: ['AWS', 'Azure', 'GCP', 'Terraform', 'Kubernetes', 'microservices', 'security', 'cost optimization'],
-  data_analyst: ['SQL', 'Excel', 'Tableau', 'Power BI', 'pandas', 'data cleaning', 'statistical analysis', 'Python'],
 }
 
 async function extractText(file: File): Promise<string> {
@@ -48,36 +45,102 @@ async function extractText(file: File): Promise<string> {
 }
 
 async function analyzeWithClaude(resumeText: string, jobDesc: string, niche: string, shareId: string): Promise<ATSAnalysisResult> {
-  const nicheKeywords = NicheKeywords[niche] || []
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
 
-  const systemPrompt = `You are an ATS (Applicant Tracking System) expert specializing in analyzing resumes for${niche ? ` ${niche.replace(/_/g, ' ')}` : ' general'} roles.
+  const systemPrompt = `You are a Senior HR Director with 15+ years of experience at Fortune 500 companies. You have reviewed over 50,000 resumes and reject 8 out of 10. You do not sugarcoat. You do not encourage. You score based on hard evidence only.
 
-Analyze the resume and return ONLY a valid JSON object with this exact shape — no markdown, no preamble, no commentary:
+═══════════════════════════════════════════════════════════════
+SCORING RULES — READ CAREFULLY BEFORE SCORING
+═══════════════════════════════════════════════════════════════
+
+OVERALL SCORE (0–100):
+- 90–100: Exceptional. Ready to send. Rare.
+- 75–89: Good but needs work. Some gaps.
+- 60–74: Average. Will pass some ATS filters.
+- 40–59: Weak. Will fail most ATS filters.
+- 0–39: Poor. Do not send this resume anywhere.
+
+HARD DEDUCTIONS (apply strictly, no exceptions):
+- Every bullet point without a number/metric: -3 points each
+- Generic summary opener ("detail-oriented", "passionate", "hardworking", "results-driven"): -5 points
+- Skills mentioned in summary but missing from Skills section: -4 points per skill
+- Employment gap > 6 months with no explanation: -8 points
+- No GitHub/LinkedIn OR listed as plain text not full URL: -3 points
+- Job title inconsistency across sections: -4 points
+- Missing any of these sections (Summary, Skills, Experience, Education): -10 points each
+- Buzzwords with zero proof ("scalable", "robust", "seamless" with no metrics): -2 points each
+
+SUB-SCORES (each out of 100):
+- keyword_score: Match % between resume keywords and job description. Partial = 50%.
+- formatting_score: Penalize tables, columns, graphics, headers/footers, text boxes, missing contact info.
+- readability_score: Passive voice, jargon without explanation, walls of text, bullets over 2 lines.
+
+═══════════════════════════════════════════════════════════════
+TONE — NON-NEGOTIABLE
+═══════════════════════════════════════════════════════════════
+
+Speak as a Senior HR Director mildly irritated by the lack of numbers.
+WRONG: "Great resume! Just a few small tweaks needed."
+RIGHT: "7 of 9 bullets contain zero metrics. In a stack of 200 resumes, this gets skipped in under 10 seconds."
+
+═══════════════════════════════════════════════════════════════
+REWRITE CAPABILITY
+═══════════════════════════════════════════════════════════════
+
+For every weak bullet, provide:
+ORIGINAL: [exact text from resume]
+PROBLEM: [one sentence, specific]
+REWRITE: [your improved version with placeholder metrics like [X%] or [N units] if real numbers unknown]
+
+═══════════════════════════════════════════════════════════════
+OUTPUT FORMAT — RETURN ONLY VALID JSON, NO MARKDOWN, NO PREAMBLE
+═══════════════════════════════════════════════════════════════
+
 {
-  "ats_score": number (0-100),
-  "keyword_score": number (0-100),
-  "formatting_score": number (0-100),
-  "readability_score": number (0-100),
-  "missing_keywords": string[] (ATS-critical keywords from the job description that are absent from the resume),
-  "matched_keywords": string[] (keywords from the job description that ARE found in the resume),
-  "formatting_risks": string[] (specific formatting issues that cause ATS failure),
-  "section_feedback": [{ "section": string, "score": number, "feedback": string, "suggestions": string[] }],
-  "proof_gaps": string[] (achievements lacking quantified metrics),
-  "overall_summary": string (2-3 sentence assessment of ATS compatibility),
-  "top_3_improvements": string[] (the 3 most impactful changes to raise the score),
-  "share_id": string (use the provided share_id: "${shareId}")
+  "ats_score": <integer 0-100>,
+  "keyword_score": <integer 0-100>,
+  "formatting_score": <integer 0-100>,
+  "readability_score": <integer 0-100>,
+  "verdict": "<2-3 sentences. Clinical. Direct. State the biggest problem first.>",
+  "missing_keywords": ["<keyword>", ...],
+  "matched_keywords": ["<keyword>", ...],
+  "hard_issues": [
+    {
+      "issue": "<specific problem>",
+      "impact": "<what this costs the candidate>",
+      "fix": "<exact action to take>"
+    }
+  ],
+  "bullet_rewrites": [
+    {
+      "original": "<exact bullet from resume>",
+      "problem": "<one sentence>",
+      "rewrite": "<improved version>"
+    }
+  ],
+  "section_scores": {
+    "summary": <0-100>,
+    "skills": <0-100>,
+    "experience": <0-100>,
+    "education": <0-100>,
+    "projects": <0-100>
+  },
+  "formatting_risks": ["<specific formatting issue>", ...],
+  "achievement_gaps": ["<missing proof point>", ...],
+  "top_3_improvements": [
+    "<most impactful change, specific and actionable>",
+    "<second most impactful>",
+    "<third most impactful>"
+  ],
+  "estimated_pass_rate": "<percentage chance this resume passes ATS filter for a mid-level role>",
+  "recruiter_first_impression": "<what a recruiter thinks in the first 6 seconds>"
 }
 
-IMPORTANT:
-- Return ONLY the JSON object
-- missing_keywords should prioritize niche-specific skills: ${nicheKeywords.join(', ') || 'tools and technologies relevant to the role'}
-- ATS score: keyword matching (40%), formatting (30%), readability (20%), section completeness (10%)
-- formatting_risks must be specific and actionable`
+Analyze the resume and return ONLY the JSON object above.`
 
   const userPrompt = jobDesc
-    ? `Resume:\n${resumeText}\n\nJob Description:\n${jobDesc}`
+    ? `Resume:\n${resumeText}\n\nJob Description:\n${jobDesc}\n\nNiche: ${niche.replace(/_/g, ' ')}`
     : `Resume:\n${resumeText}\n\n(No job description provided — score based on general ATS best practices.)`
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -89,7 +152,7 @@ IMPORTANT:
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: 3000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     }),
