@@ -16,7 +16,9 @@
       "Bash(npx next *)",
       "Bash(rm \"C:/Users/Shashank tiwari/OneDrive/Desktop/Resume-Builder/frontend/src/app/api/og/score/[shareId]/route.ts\")",
       "Bash(rmdir \"C:/Users/Shashank tiwari/OneDrive/Desktop/Resume-Builder/frontend/src/app/api/og/score/[shareId]\")",
-      "PowerShell(Remove-Item *)"
+      "PowerShell(Remove-Item *)",
+      "Bash(rm -f tsconfig.tsbuildinfo)",
+      "Bash(rm -rf .next)"
     ]
   }
 }
