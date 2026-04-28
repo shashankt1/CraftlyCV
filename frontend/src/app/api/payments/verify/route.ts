@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
       planId,
     } = body
     const userId = user.id
+    // Map to schema column names
+    const orderId = razorpay_order_id
+    const paymentId = razorpay_payment_id
 
     // ─── Input Validation ─────────────────────────────────────────────────────
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
@@ -102,7 +105,7 @@ export async function POST(request: NextRequest) {
     const { error: processedError } = await admin
       .from('processed_payments')
       .insert({
-        razorpay_payment_id: razorpay_payment_id,
+        razorpay_payment_id: paymentId,
         user_id: userId,
         amount: PLAN_PRICES[planId] / 100,
         plan_id: planId,
@@ -126,8 +129,8 @@ export async function POST(request: NextRequest) {
       .from('payment_transactions')
       .insert({
         user_id: userId,
-        razorpay_order_id,
-        razorpay_payment_id,
+        order_id: orderId,
+        payment_id: paymentId,
         plan_id: planId,
         amount: planPrice,
         currency: 'INR',

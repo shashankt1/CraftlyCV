@@ -161,7 +161,9 @@ Analyze the resume and return ONLY the JSON object above.`
   if (!response.ok) throw new Error(`Claude API error: ${response.status}`)
   const data = await response.json()
   const raw = data.content?.[0]?.text || '{}'
-  try { return JSON.parse(raw.trim()) }
+  // Strip markdown fences Claude sometimes wraps around JSON despite instructions
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+  try { return JSON.parse(cleaned) }
   catch { throw new Error(`Claude returned invalid JSON: ${raw.slice(0, 200)}`) }
 }
 

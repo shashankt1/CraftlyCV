@@ -28,9 +28,9 @@ export function LoadingMessage({ context, className, iconSize = 20 }: LoadingMes
   }, [context])
 
   return (
-    <div className={cn('flex items-center gap-3 text-white/50', className)}>
-      <Loader2 className={cn('animate-spin text-blue-400')} style={{ width: iconSize, height: iconSize }} />
-      <span className="text-sm font-medium text-white/70">
+    <div className={cn('flex items-center gap-3 text-gray-500 dark:text-white/50', className)}>
+      <Loader2 className={cn('animate-spin text-blue-500 dark:text-blue-400')} style={{ width: iconSize, height: iconSize }} />
+      <span className="text-sm font-medium text-gray-700 dark:text-white/70">
         {messagesData[context][messageIdx]}
       </span>
     </div>

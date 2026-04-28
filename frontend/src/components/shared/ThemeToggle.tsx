@@ -17,14 +17,14 @@ export function ThemeToggle({ className = '', iconClassName = 'h-4 w-4' }: Theme
   useEffect(() => setMounted(true), [])
 
   if (!mounted) {
-    return <div className={cn('w-9 h-9 rounded-full bg-white/8', className)} />
+    return <div className={cn('w-9 h-9 rounded-full bg-white/[0.08]', className)} />
   }
 
   return (
     <button
       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
       className={cn(
-        'w-9 h-9 rounded-full bg-white/8 hover:bg-white/15 flex items-center justify-center text-white/70 hover:text-white transition-all flex-shrink-0',
+        'w-9 h-9 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-foreground/70 hover:text-foreground transition-all flex-shrink-0',
         className
       )}
       aria-label="Toggle theme"

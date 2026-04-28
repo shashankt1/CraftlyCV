@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
     try {
       await supabase.from('payment_transactions').insert({
         user_id: user.id,
-        razorpay_order_id: razorpayOrder.id,
+        order_id: razorpayOrder.id,
+        payment_id: null, // set on verify
         amount: plan.price,
         currency: 'INR',
         plan_id: plan.id,
