@@ -1,8 +1,8 @@
 'use client'
 
-import { Zap, Star, CreditCard, Shield } from 'lucide-react'
+import { Zap, Star, Crown, CreditCard, Shield } from 'lucide-react'
 import Link from 'next/link'
-import { PLANS } from '@/lib/plans'
+import { PLANS_LIST } from '@/lib/plans'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -20,9 +20,9 @@ interface PaywallModalProps {
 }
 
 export function PaywallModal({ open, onClose, featureName }: PaywallModalProps) {
-  const starterPlan = PLANS.find(p => p.id === 'starter')
-  const proPlan = PLANS.find(p => p.id === 'pro')
-  const lifetimePlan = PLANS.find(p => p.id === 'lifetime')
+  const starterPlan = PLANS_LIST.find(p => p.id === 'starter')
+  const proPlan = PLANS_LIST.find(p => p.id === 'pro')
+  const lifetimePlan = PLANS_LIST.find(p => p.id === 'lifetime')
 
   return (
     <Dialog open={open} onOpenChange={onClose}>

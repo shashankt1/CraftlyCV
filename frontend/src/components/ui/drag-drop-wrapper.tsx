@@ -1,11 +1,11 @@
 'use client'
 
-import { DragDropContext, Droppable, Draggable, DragEndHandler } from '@hello-pangea/dnd'
+import { DragDropContext, Droppable, Draggable, DraggableProvidedDragHandleProps } from '@hello-pangea/dnd'
 import { ReactNode } from 'react'
 
 interface DragDropProviderProps {
   children: ReactNode
-  onDragEnd: DragEndHandler
+  onDragEnd: (result: import('@hello-pangea/dnd').DropResult) => void
 }
 
 export function DragDropProvider({ children, onDragEnd }: DragDropProviderProps) {

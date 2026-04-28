@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { PLANS } from '@/lib/plans'
+import { PLANS_LIST } from '@/lib/plans'
 
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || ''
 
@@ -49,7 +49,7 @@ export function useRazorpay() {
       }
 
       const data = await response.json()
-      const plan = PLANS.find(p => p.id === planId)
+      const plan = PLANS_LIST.find(p => p.id === planId)
 
       // @ts-expect-error Razorpay is loaded via script
       const razorpay = new window.Razorpay({
