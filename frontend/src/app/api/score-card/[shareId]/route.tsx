@@ -6,14 +6,15 @@ export const runtime = 'edge'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { shareId: string } }
+  { params }: { params: Promise<{ shareId: string }> }
 ) {
   try {
     const admin = await createAdminClient()
+    const { shareId } = await params
     const { data } = await admin
       .from('resume_analyses')
       .select('result, created_at')
-      .eq('share_id', params.shareId)
+      .eq('share_id', shareId)
       .single()
 
     if (!data) {

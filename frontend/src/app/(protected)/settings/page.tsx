@@ -104,7 +104,7 @@ export default function SettingsPage() {
       .eq('username', form.username)
       .maybeSingle()
 
-    setUsernameAvailable(!!data)
+    setUsernameAvailable(!data)
     setUsernameChecking(false)
   }
 

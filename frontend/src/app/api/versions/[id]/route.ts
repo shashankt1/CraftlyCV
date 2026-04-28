@@ -3,7 +3,7 @@ import { createAdminClient, createClient } from '@/lib/supabase/server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -11,10 +11,11 @@ export async function GET(
     if (authError || !user) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
 
     const admin = await createAdminClient()
+    const { id } = await params
     const { data } = await admin
       .from('resume_versions')
       .select('*, master_resumes(content)')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', user.id)
       .single()
 
@@ -23,7 +24,7 @@ export async function GET(
     const { data: history } = await admin
       .from('version_history')
       .select('*')
-      .eq('version_id', params.id)
+      .eq('version_id', id)
       .order('created_at', { ascending: true })
 
     return NextResponse.json({ success: true, data: { ...data, history: history ?? [] } })
@@ -34,7 +35,7 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -43,6 +44,7 @@ export async function PATCH(
 
     const body = await request.json()
     const { status, tailored_content, version_name, ats_score } = body
+    const { id } = await params
 
     const admin = await createAdminClient()
 
@@ -51,13 +53,13 @@ export async function PATCH(
       const { data: current } = await admin
         .from('resume_versions')
         .select('tailored_content')
-        .eq('id', params.id)
+        .eq('id', id)
         .eq('user_id', user.id)
         .single()
 
       if (current?.tailored_content) {
         await admin.from('version_history').insert({
-          version_id: params.id,
+          version_id: id,
           content_snapshot: current.tailored_content,
         })
       }
@@ -71,7 +73,7 @@ export async function PATCH(
 
     const { data, error } = await admin.from('resume_versions')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', user.id)
       .select()
       .single()
@@ -85,18 +87,19 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
 
+    const { id } = await params
     const admin = await createAdminClient()
     const { error } = await admin
       .from('resume_versions')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', user.id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
