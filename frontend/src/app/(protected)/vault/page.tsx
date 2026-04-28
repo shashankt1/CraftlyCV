@@ -71,7 +71,7 @@ function SectionCard({ title, children, onAdd, emptyText }: { title: string; chi
       <button onClick={() => setOpen(!open)} className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-white/3 transition-colors">
         <span className="text-sm font-bold text-white/70 uppercase tracking-widest">{title}</span>
         <div className="flex items-center gap-2">
-          {onAdd && <Button size="icon-sm" variant="ghost" onClick={e => { e.stopPropagation(); onAdd() }}><Plus className="h-4 w-4" /></Button>}
+          {onAdd && <Button size="icon" variant="ghost" onClick={e => { e.stopPropagation(); onAdd() }}><Plus className="h-4 w-4" /></Button>}
           {open ? <ChevronUp className="h-4 w-4 text-white/30" /> : <ChevronDown className="h-4 w-4 text-white/30" />}
         </div>
       </button>
@@ -144,10 +144,12 @@ export default function VaultPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/auth'); return }
+    setUserId(user.id)
     const { data } = await supabase.from('master_resumes').select('*').eq('user_id', user.id).single()
     if (data) {
       setMasterId(data.id)
@@ -160,8 +162,13 @@ export default function VaultPage() {
 
   const autoSave = useCallback(async (updatedContent: MasterContent) => {
     setSaving(true)
-    const score = Object.values(updatedContent).filter(v => v && (Array.isArray(v) ? v.length > 0 : typeof v === 'object' ? Object.keys(v as object).length > 0 : true)).length)
-    const completeness_score = Math.round((score / 8) * 100)
+    const filled = Object.values(updatedContent).filter(v => {
+      if (!v) return false
+      if (Array.isArray(v)) return v.length > 0
+      if (typeof v === 'object') return Object.keys(v).length > 0
+      return String(v).trim().length > 0
+    }).length
+    const completeness_score = Math.round((filled / 8) * 100)
 
     if (masterId) {
       const { error } = await supabase.from('master_resumes').update({
@@ -172,7 +179,7 @@ export default function VaultPage() {
       if (error) toast.error('Auto-save failed')
     } else {
       const { data, error } = await supabase.from('master_resumes').insert({
-        user_id: user?.id,
+        user_id: userId,
         content: updatedContent,
         completeness_score,
       }).select().single()
@@ -182,7 +189,7 @@ export default function VaultPage() {
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }, [masterId, supabase, user?.id])
+  }, [masterId, supabase, userId])
 
   const update = <K extends keyof MasterContent>(key: K, value: MasterContent[K]) => {
     const next = { ...content, [key]: value }
@@ -276,7 +283,7 @@ export default function VaultPage() {
               <div key={exp.id} className="mb-5 p-4 rounded-xl bg-white/3 border border-white/8 space-y-3 last:mb-0">
                 <div className="flex items-center justify-between">
                   <GripVertical className="h-4 w-4 text-white/20 cursor-grab" />
-                  <Button size="icon-sm" variant="ghost" className="text-red-400" onClick={() => rmExp(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="text-red-400" onClick={() => rmExp(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-2">
                   <div className="space-y-1"><label className="text-xs font-medium text-white/30">Company</label><EditableField value={exp.company} onSave={v => updExp(i, 'company', v)} placeholder="Company name" /></div>
@@ -300,7 +307,7 @@ export default function VaultPage() {
                       <div key={b.id} className="flex gap-2 items-start">
                         <span className="text-white/20 mt-2">•</span>
                         <EditableField value={b.text} onSave={v => updBullet(i, j, v)} placeholder="• Achieved X by doing Y (include metrics)" multiline />
-                        <Button size="icon-sm" variant="ghost" className="text-white/30 mt-1" onClick={() => rmBullet(i, j)}><X className="h-3 w-3" /></Button>
+                        <Button size="icon" variant="ghost" className="text-white/30 mt-1" onClick={() => rmBullet(i, j)}><X className="h-3 w-3" /></Button>
                       </div>
                     ))}
                   </div>
@@ -319,7 +326,7 @@ export default function VaultPage() {
                   <div className="space-y-1"><label className="text-xs font-medium text-white/30">Field of Study</label><EditableField value={edu.field} onSave={v => updEdu(i, 'field', v)} placeholder="Computer Science" /></div>
                   <div className="space-y-1"><label className="text-xs font-medium text-white/30">Year / Grade</label><EditableField value={edu.year || edu.grade} onSave={v => updEdu(i, 'year', v)} placeholder="2024 / 8.5 CGPA" /></div>
                 </div>
-                <Button size="icon-sm" variant="ghost" className="text-red-400 mt-6" onClick={() => rmEdu(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                <Button size="icon" variant="ghost" className="text-red-400 mt-6" onClick={() => rmEdu(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>
             ))}
           </SectionCard>
@@ -330,7 +337,7 @@ export default function VaultPage() {
               <div key={p.id} className="mb-4 p-4 rounded-xl bg-white/3 border border-white/8 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1 flex-1"><label className="text-xs font-medium text-white/30">Project Name</label><EditableField value={p.name} onSave={v => updProj(i, 'name', v)} placeholder="Project name" /></div>
-                  <Button size="icon-sm" variant="ghost" className="text-red-400" onClick={() => rmProj(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="text-red-400" onClick={() => rmProj(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
                 <div className="space-y-1"><label className="text-xs font-medium text-white/30">Description</label><EditableField value={p.description} onSave={v => updProj(i, 'description', v)} placeholder="What does this project do?" multiline /></div>
                 <div className="space-y-1"><label className="text-xs font-medium text-white/30">Tech Stack (comma-separated)</label><EditableField value={(p.tech_stack || []).join(', ')} onSave={v => updProj(i, 'tech_stack', v.split(',').map(s => s.trim()).filter(Boolean))} placeholder="React, Node.js, PostgreSQL" /></div>
@@ -348,7 +355,7 @@ export default function VaultPage() {
                   <div className="space-y-1"><label className="text-xs font-medium text-white/30">Issuer</label><EditableField value={cert.issuer} onSave={v => updCert(i, 'issuer', v)} placeholder="Amazon / Coursera / Google" /></div>
                   <div className="space-y-1"><label className="text-xs font-medium text-white/30">Date / Credential ID</label><EditableField value={cert.date || cert.credential_id} onSave={v => updCert(i, 'date', v)} placeholder="Dec 2024 / ABC123XYZ" /></div>
                 </div>
-                <Button size="icon-sm" variant="ghost" className="text-red-400 mt-4" onClick={() => rmCert(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                <Button size="icon" variant="ghost" className="text-red-400 mt-4" onClick={() => rmCert(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>
             ))}
           </SectionCard>

@@ -210,7 +210,7 @@ export default function BillingPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              {isPro(profile || { plan: profile?.plan || 'free' }) ? (
+              {isPro(profile) ? (
                 <Button
                   variant="outline"
                   className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"

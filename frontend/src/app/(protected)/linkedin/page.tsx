@@ -52,7 +52,7 @@ function UpgradeGate({ onUpgrade }: { onUpgrade: () => void }) {
 }
 
 function BeforeAfter({ label, before, after, explanation, charCount }: {
-  label: string; before: string; after: string; explanation: string; charCount: number
+  label: string; before: string; after: string; explanation: string; charCount?: number
 }) {
   const [copied, setCopied] = useState(false)
   const [explainOpen, setExplainOpen] = useState(false)

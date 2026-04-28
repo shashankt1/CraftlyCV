@@ -1,9 +1,9 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
   try {
-    const adminClient = createAdminClient()
+    const adminClient = await createAdminClient()
 
     // REVENUE STATS
     const { data: planData } = await adminClient
@@ -167,7 +167,7 @@ export async function GET() {
       .slice(0, 10)
 
     const totalReferralRevenue = topReferrers.reduce((sum, r) => sum + r.revenue, 0)
-    const referralConversionRate = signups > 0 ? Math.round((topReferrers.reduce((sum, r) => sum + r.count, 0) / signups) * 100) : 0
+    const referralConversionRate = signups > 0 ? Math.round((topReferrers.reduce((sum, r) => sum + r.paidConversions, 0) / signups) * 100) : 0
 
     // RECENT PAYMENTS
     const { data: recentPaymentsData } = await adminClient

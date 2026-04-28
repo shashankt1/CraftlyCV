@@ -27,6 +27,15 @@ export const SUPPORTED_LANGUAGES = {
 
 export type LanguageCode = keyof typeof SUPPORTED_LANGUAGES
 
+// ← THE FIX: added `export` here. This is the only change in this file.
+export type JSONValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JSONValue[]
+  | { [key: string]: JSONValue }
+
 export function isSupported(lang: string): lang is LanguageCode {
   return lang in SUPPORTED_LANGUAGES
 }
@@ -106,8 +115,6 @@ export async function translateFromEnglish(
 
 /* ─── Batch translation for JSON objects ───────────────────────────────────── */
 
-type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
-
 export async function translateObject(
   obj: JSONValue,
   sourceLang: LanguageCode,
@@ -143,6 +150,5 @@ export async function translateATSResult(
   targetLang: LanguageCode
 ): Promise<Record<string, JSONValue>> {
   if (targetLang === 'en') return result
-
-  return translateObject(result, 'en', targetLang, 'ATS resume feedback')
+  return translateObject(result, 'en', targetLang, 'ATS resume feedback') as Promise<Record<string, JSONValue>>
 }

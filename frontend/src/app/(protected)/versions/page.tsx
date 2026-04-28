@@ -61,10 +61,10 @@ function VersionCard({ version, onDuplicate, onDelete }: {
             <Button size="sm" variant="outline" asChild>
               <Link href={`/versions/${version.id}`}><ArrowRight className="h-3.5 w-3.5" /></Link>
             </Button>
-            <Button size="icon-sm" variant="ghost" onClick={() => onDuplicate(version)} title="Duplicate">
+            <Button size="icon" variant="ghost" onClick={() => onDuplicate(version)} title="Duplicate">
               <Copy className="h-3.5 w-3.5" />
             </Button>
-            <Button size="icon-sm" variant="ghost" className="text-red-400/70 hover:text-red-400" onClick={() => onDelete(version.id)} title="Delete">
+            <Button size="icon" variant="ghost" className="text-red-400/70 hover:text-red-400" onClick={() => onDelete(version.id)} title="Delete">
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -86,9 +86,12 @@ export default function VersionsPage() {
   const [form, setForm] = useState({ versionName: '', targetCompany: '', targetRole: '', jobDescription: '' })
 
   useEffect(() => {
-    const { data: { user } } = supabase.auth.getUser()
-    if (!user) { router.push('/auth'); return }
-    loadVersions()
+    async function checkAuth() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/auth'); return }
+      loadVersions()
+    }
+    checkAuth()
   }, [])
 
   async function loadVersions() {

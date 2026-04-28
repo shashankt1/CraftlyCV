@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { checkRateLimit, rateLimitExceededResponse } from '@/lib/rate-limit'
 import { v4 as uuidv4 } from 'uuid'
-import { translateToEnglish, translateFromEnglish, translateObject, type LanguageCode } from '@/lib/translation'
+import { translateToEnglish, translateFromEnglish, translateObject, type LanguageCode, type JSONValue } from '@/lib/translation'
 
 interface TailorResult {
   tailored_summary: string
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
 
     // ── LAYER 5: Translate output back to user's output_language ─────────────
     const translatedResult = outputLang !== 'en'
-      ? await translateObject(result, 'en', outputLang, 'tailored resume content') as TailorResult
+      ? await translateObject(result as unknown as JSONValue, 'en', outputLang, 'tailored resume content') as unknown as TailorResult
       : result
 
     // ── Persist: store English content in DB, return translated to frontend ───

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { render } from '@react-email/render'
 
 export async function POST() {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },
@@ -27,10 +28,10 @@ export async function POST() {
     const { sendEmail } = await import('@/lib/email')
     const { WelcomeEmail } = await import('@/emails/welcome')
 
-    const emailHtml = WelcomeEmail({
+    const emailHtml = await render(WelcomeEmail({
       firstName: profile.first_name || 'there',
       referralCode: profile.referral_code || undefined,
-    })
+    }))
 
     const result = await sendEmail(profile.email, 'Welcome to CraftlyCV', emailHtml)
 

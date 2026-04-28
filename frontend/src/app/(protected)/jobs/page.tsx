@@ -74,40 +74,45 @@ function getInterviewCountdown(dateStr?: string) {
   return `In ${days} days`
 }
 
-function JobCard({ job, onClick }: { job: JobApp; onClick: () => void }) {
+function JobCard({ job, onClick, index }: { job: JobApp; onClick: () => void; index: number }) {
   const countdown = getInterviewCountdown(job.interview_date)
 
   return (
-    <Draggable id={job.id}>
-      <div
-        onClick={onClick}
-        className="p-3 rounded-lg bg-zinc-800/70 border border-zinc-700/50 hover:border-zinc-600 cursor-pointer transition-all group"
-      >
-        <div className="flex items-start gap-2">
-          <GripVertical className="h-4 w-4 text-zinc-600 mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-zinc-100 truncate">{job.company}</p>
-              {job.resume_version_name && (
-                <Badge className="text-[10px] bg-indigo-500/20 text-indigo-400 border-indigo-500/30 shrink-0">
-                  {job.resume_version_name}
-                </Badge>
-              )}
-            </div>
-            <p className="text-xs text-zinc-500 mt-0.5 truncate">{job.role}</p>
-            <div className="flex items-center gap-3 mt-2">
-              {job.applied_date && (
-                <span className="text-[11px] text-zinc-600">{formatDate(job.applied_date)}</span>
-              )}
-              {countdown && (
-                <span className="text-[11px] text-amber-400 flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> {countdown}
-                </span>
-              )}
+    <Draggable draggableId={job.id} index={index}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          onClick={onClick}
+          className={`p-3 rounded-lg bg-zinc-800/70 border border-zinc-700/50 hover:border-zinc-600 cursor-pointer transition-all group ${snapshot.isDragging ? 'ring-2 ring-indigo-500' : ''}`}
+        >
+          <div className="flex items-start gap-2">
+            <GripVertical className="h-4 w-4 text-zinc-600 mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-zinc-100 truncate">{job.company}</p>
+                {job.resume_version_name && (
+                  <Badge className="text-[10px] bg-indigo-500/20 text-indigo-400 border-indigo-500/30 shrink-0">
+                    {job.resume_version_name}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-zinc-500 mt-0.5 truncate">{job.role}</p>
+              <div className="flex items-center gap-3 mt-2">
+                {job.applied_date && (
+                  <span className="text-[11px] text-zinc-600">{formatDate(job.applied_date)}</span>
+                )}
+                {countdown && (
+                  <span className="text-[11px] text-amber-400 flex items-center gap-1">
+                    <Clock className="h-3 w-3" /> {countdown}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </Draggable>
   )
 }
@@ -130,10 +135,13 @@ export default function JobsPage() {
   })
 
   useEffect(() => {
-    const { data: { user } } = supabase.auth.getUser()
-    if (!user) { router.push('/auth'); return }
-    loadJobs()
-    loadVersions()
+    async function checkAuth() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/auth'); return }
+      loadJobs()
+      loadVersions()
+    }
+    checkAuth()
   }, [])
 
   async function loadJobs() {
@@ -287,14 +295,20 @@ export default function JobsPage() {
                 <Badge className="bg-zinc-800 text-zinc-400 text-xs">{jobsByColumn[col.id]?.length || 0}</Badge>
               </div>
               <Droppable droppableId={col.id}>
-                <div className={cn(
-                  'min-h-[200px] rounded-lg border transition-colors p-2 space-y-2',
-                  col.bgColor, col.id === 'applied' ? 'border-blue-500/20' : 'border-zinc-800'
-                )}>
-                  {jobsByColumn[col.id]?.map(job => (
-                    <JobCard key={job.id} job={job} onClick={() => { setSelectedJob(job); setShowDetail(true) }} />
+                {(provided, snapshot) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className={cn(
+                    'min-h-[200px] rounded-lg border transition-colors p-2 space-y-2',
+                    col.bgColor, col.id === 'applied' ? 'border-blue-500/20' : 'border-zinc-800',
+                    snapshot.isDraggingOver ? 'bg-zinc-700/30' : ''
+                  )}>
+                  {jobsByColumn[col.id]?.map((job, idx) => (
+                    <JobCard key={job.id} job={job} onClick={() => { setSelectedJob(job); setShowDetail(true) }} index={idx} />
                   ))}
                 </div>
+                )}
               </Droppable>
             </div>
           ))}

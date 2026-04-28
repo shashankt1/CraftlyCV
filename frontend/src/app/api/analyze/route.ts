@@ -19,6 +19,7 @@ interface ATSAnalysisResult {
   overall_summary: string
   top_3_improvements: string[]
   share_id: string
+  [key: string]: any
 }
 
 const NicheKeywords: Record<string, string[]> = {

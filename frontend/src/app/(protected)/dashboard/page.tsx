@@ -12,10 +12,8 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import {
   Target, Sparkles, Hexagon, Briefcase, ArrowRight,
-  TrendingUp, Zap, Crown, ChevronRight, FileText,
-  Loader2, X
+  TrendingUp, Zap, Crown, ChevronRight, FileText, X
 } from 'lucide-react'
-import { toast } from 'sonner'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 function getGreeting() {
@@ -35,13 +33,6 @@ interface Version {
   created_at: string
 }
 
-interface JobStats {
-  total: number
-  active: number
-  responseRate: number
-  offers: number
-}
-
 interface ScoreData {
   date: string
   score: number
@@ -52,27 +43,29 @@ export default function DashboardPage() {
   const supabase = createClient()
   const [profile, setProfile] = useState<any>(null)
   const [versions, setVersions] = useState<Version[]>([])
-  const [jobStats, setJobStats] = useState<JobStats>({ total: 0, active: 0, responseRate: 0, offers: 0 })
+  const [jobStats, setJobStats] = useState({ total: 0, active: 0, responseRate: 0, offers: 0 })
   const [scoreHistory, setScoreHistory] = useState<ScoreData[]>([])
   const [vaultCompleteness, setVaultCompleteness] = useState(0)
   const [loading, setLoading] = useState(true)
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
-    const { data: { user } } = supabase.auth.getUser()
-    if (!user) { router.push('/auth'); return }
-    loadData()
+    async function checkAuth() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/auth'); return }
+      loadData()
+    }
+    checkAuth()
   }, [])
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const [profileRes, versionsRes, jobsRes, analysesRes, vaultRes] = await Promise.all([
+    const [profileRes, versionsRes, jobsRes, vaultRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('resume_versions').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
       supabase.from('job_applications').select('status').eq('user_id', user.id),
-      supabase.from('resume_versions').select('ats_score, created_at').eq('user_id', user.id).not('ats_score', 'is', null).order('created_at', { ascending: true }).limit(5),
       supabase.from('master_resumes').select('content').eq('user_id', user.id).single(),
     ])
 
@@ -81,7 +74,10 @@ export default function DashboardPage() {
     if (versionsRes.data) {
       setVersions(versionsRes.data)
       const analyzed = versionsRes.data.filter((v: Version) => v.ats_score != null)
-      setScoreHistory(analyzed.map((v: Version) => ({ date: new Date(v.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), score: v.ats_score })))
+      setScoreHistory(analyzed.map((v: Version) => ({
+        date: new Date(v.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        score: v.ats_score!
+      })))
     }
 
     if (jobsRes.data) {
@@ -129,7 +125,6 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* Section 1: Welcome */}
       <Card className="bg-zinc-900/80 border-zinc-800">
         <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -141,11 +136,9 @@ export default function DashboardPage() {
               {profile?.scans && profile.scans <= 3 && !isPro && (
                 <div className="flex items-center gap-2 mt-2">
                   <Progress value={(profile.scans / 10) * 100} className="h-1.5 w-48" />
-                  {!isPro && (
-                    <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">
-                      {profile.scans} scans left — upgrade for unlimited
-                    </Badge>
-                  )}
+                  <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">
+                    {profile.scans} scans left — upgrade for unlimited
+                  </Badge>
                 </div>
               )}
             </div>
@@ -158,39 +151,13 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Section 2: Quick Actions */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <QuickActionCard
-          href="/analyze"
-          icon={Target}
-          label="Analyze My Resume"
-          description="ATS score + feedback"
-          color="text-red-400 bg-red-500/10"
-        />
-        <QuickActionCard
-          href="/tailor"
-          icon={Sparkles}
-          label="Tailor for a Job"
-          description="AI resume tailoring"
-          color="text-indigo-400 bg-indigo-500/10"
-        />
-        <QuickActionCard
-          href="/versions"
-          icon={Hexagon}
-          label="View My Versions"
-          description="All resume versions"
-          color="text-emerald-400 bg-emerald-500/10"
-        />
-        <QuickActionCard
-          href="/jobs"
-          icon={Briefcase}
-          label="Track Applications"
-          description="Kanban job tracker"
-          color="text-amber-400 bg-amber-500/10"
-        />
+        <QuickActionCard href="/analyze" icon={Target} label="Analyze My Resume" description="ATS score + feedback" color="text-red-400 bg-red-500/10" />
+        <QuickActionCard href="/tailor" icon={Sparkles} label="Tailor for a Job" description="AI resume tailoring" color="text-indigo-400 bg-indigo-500/10" />
+        <QuickActionCard href="/versions" icon={Hexagon} label="View My Versions" description="All resume versions" color="text-emerald-400 bg-emerald-500/10" />
+        <QuickActionCard href="/jobs" icon={Briefcase} label="Track Applications" description="Kanban job tracker" color="text-amber-400 bg-amber-500/10" />
       </div>
 
-      {/* Section 3: Recent Versions */}
       <Card className="bg-zinc-900/80 border-zinc-800">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -202,12 +169,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           {versions.length === 0 ? (
-            <EmptyState
-              icon={Hexagon}
-              title="No versions yet"
-              description="Create your first tailored resume version."
-              action={<Button asChild><Link href="/versions"><Sparkles className="h-4 w-4 mr-2" />Create Version</Link></Link>}
-            />
+            <EmptyState icon={Hexagon} title="No versions yet" description="Create your first tailored resume version." />
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {versions.slice(0, 3).map(v => (
@@ -216,24 +178,15 @@ export default function DashboardPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-zinc-100 truncate">{v.version_name || 'Untitled'}</p>
-                        {v.tailored_for_company && (
-                          <p className="text-xs text-zinc-500 mt-0.5">{v.tailored_for_company}</p>
-                        )}
+                        {v.tailored_for_company && <p className="text-xs text-zinc-500 mt-0.5">{v.tailored_for_company}</p>}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {v.ats_score && (
-                          <Badge className={cn(
-                            'text-xs font-bold',
-                            v.ats_score >= 80 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                            v.ats_score >= 60 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
-                            'bg-red-500/20 text-red-400 border-red-500/30'
-                          )}>
+                          <Badge className={cn('text-xs font-bold', v.ats_score >= 80 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : v.ats_score >= 60 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30')}>
                             {v.ats_score}
                           </Badge>
                         )}
-                        <Badge className="text-xs capitalize bg-zinc-700/50 text-zinc-400 border-zinc-600/50">
-                          {v.status}
-                        </Badge>
+                        <Badge className="text-xs capitalize bg-zinc-700/50 text-zinc-400 border-zinc-600/50">{v.status}</Badge>
                       </div>
                     </div>
                   </div>
@@ -244,7 +197,6 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Section 4: Job Tracker Summary */}
       <Card className="bg-zinc-900/80 border-zinc-800">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -256,12 +208,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           {jobStats.total === 0 ? (
-            <EmptyState
-              icon={Briefcase}
-              title="No applications yet"
-              description="Start tracking your job applications."
-              action={<Button asChild><Link href="/jobs"><Briefcase className="h-4 w-4 mr-2" />Track Jobs</Link></Button>}
-            />
+            <EmptyState icon={Briefcase} title="No applications yet" description="Start tracking your job applications." />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <StatChip label="Applied" value={jobStats.total} icon={Briefcase} color="text-indigo-400" />
@@ -273,29 +220,20 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Section 5: ATS Score Trend */}
       <Card className="bg-zinc-900/80 border-zinc-800">
         <CardHeader className="pb-3">
           <CardTitle className="text-base text-zinc-100">ATS Score Trend</CardTitle>
         </CardHeader>
         <CardContent>
           {scoreHistory.length === 0 ? (
-            <EmptyState
-              icon={TrendingUp}
-              title="No score history yet"
-              description="Analyze your first resume to see your score trend."
-              action={<Button asChild><Link href="/analyze"><Target className="h-4 w-4 mr-2" />Analyze Resume</Link></Button>}
-            />
+            <EmptyState icon={TrendingUp} title="No score history yet" description="Analyze your first resume to see your score trend." />
           ) : (
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={scoreHistory}>
                   <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 12 }} axisLine={false} tickLine={false} />
                   <YAxis domain={[0, 100]} tick={{ fill: '#71717a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: '8px', color: '#f4f4f5' }}
-                    labelStyle={{ color: '#a1a1aa' }}
-                  />
+                  <Tooltip contentStyle={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: '8px', color: '#f4f4f5' }} labelStyle={{ color: '#a1a1aa' }} />
                   <Line type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={2} dot={{ fill: '#6366f1', r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -304,20 +242,13 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Section 6: Vault Completeness */}
       <Card className="bg-zinc-900/80 border-zinc-800">
         <CardContent className="p-6">
           <div className="flex items-center gap-6">
             <div className="relative w-24 h-24 shrink-0">
               <svg className="w-24 h-24 -rotate-90" viewBox="0 0 48 48">
                 <circle cx="24" cy="24" r="20" fill="none" stroke="#3f3f46" strokeWidth="4" />
-                <circle
-                  cx="24" cy="24" r="20" fill="none"
-                  stroke={vaultCompleteness < 60 ? '#f59e0b' : '#6366f1'}
-                  strokeWidth="4"
-                  strokeDasharray={`${(vaultCompleteness / 100) * 125.6} 125.6`}
-                  strokeLinecap="round"
-                />
+                <circle cx="24" cy="24" r="20" fill="none" stroke={vaultCompleteness < 60 ? '#f59e0b' : '#6366f1'} strokeWidth="4" strokeDasharray={`${(vaultCompleteness / 100) * 125.6} 125.6`} strokeLinecap="round" />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
                 <span className="text-lg font-bold text-zinc-100">{vaultCompleteness}%</span>
@@ -326,9 +257,7 @@ export default function DashboardPage() {
             <div className="flex-1">
               <h3 className="text-base font-medium text-zinc-100">Vault Completeness</h3>
               <p className="text-sm text-zinc-500 mt-1">
-                {vaultCompleteness < 60
-                  ? 'Complete your vault to unlock better tailoring results.'
-                  : 'Your vault is well filled. Keep it updated!'}
+                {vaultCompleteness < 60 ? 'Complete your vault to unlock better tailoring results.' : 'Your vault is well filled. Keep it updated!'}
               </p>
               {vaultCompleteness < 60 && (
                 <Button asChild size="sm" className="mt-3 bg-amber-600 hover:bg-amber-700">
@@ -340,14 +269,11 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Section 7: Upgrade Banner (free users only, dismissible) */}
       {!isPro && !dismissed && (
         <Card className="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border-indigo-500/30">
           <CardContent className="p-5">
             <div className="flex items-start gap-4">
-              <div className="shrink-0">
-                <Zap className="h-6 w-6 text-indigo-400" />
-              </div>
+              <div className="shrink-0"><Zap className="h-6 w-6 text-indigo-400" /></div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-base font-semibold text-zinc-100">Upgrade to Pro</h3>
                 <p className="text-sm text-zinc-400 mt-1">
@@ -370,9 +296,7 @@ export default function DashboardPage() {
   )
 }
 
-function QuickActionCard({ href, icon: Icon, label, description, color }: {
-  href: string; icon: any; label: string; description: string; color: string
-}) {
+function QuickActionCard({ href, icon: Icon, label, description, color }: { href: string; icon: any; label: string; description: string; color: string }) {
   return (
     <Link href={href} className="block group">
       <Card className="bg-zinc-900/80 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60 transition-all h-full">
@@ -403,9 +327,7 @@ function StatChip({ label, value, icon: Icon, color }: { label: string; value: s
   )
 }
 
-function EmptyState({ icon: Icon, title, description, action }: {
-  icon: any; title: string; description: string; action?: React.ReactNode
-}) {
+function EmptyState({ icon: Icon, title, description }: { icon: any; title: string; description: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-10 text-center">
       <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center mb-3">
@@ -413,7 +335,6 @@ function EmptyState({ icon: Icon, title, description, action }: {
       </div>
       <h3 className="text-sm font-medium text-zinc-400">{title}</h3>
       <p className="text-xs text-zinc-600 mt-1 max-w-xs">{description}</p>
-      {action && <div className="mt-4">{action}</div>}
     </div>
   )
 }

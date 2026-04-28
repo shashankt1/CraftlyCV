@@ -12,7 +12,11 @@
       "Bash(npm run *)",
       "WebFetch(domain:oprnmnprfdpinkfaempv.supabase.co)",
       "Bash(npm list *)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(npx next *)",
+      "Bash(rm \"C:/Users/Shashank tiwari/OneDrive/Desktop/Resume-Builder/frontend/src/app/api/og/score/[shareId]/route.ts\")",
+      "Bash(rmdir \"C:/Users/Shashank tiwari/OneDrive/Desktop/Resume-Builder/frontend/src/app/api/og/score/[shareId]\")",
+      "PowerShell(Remove-Item *)"
     ]
   }
 }

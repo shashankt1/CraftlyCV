@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { render } from '@react-email/render'
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },
@@ -34,11 +35,11 @@ export async function POST(request: Request) {
     const { sendEmail } = await import('@/lib/email')
     const { FirstScanEmail } = await import('@/emails/first-scan')
 
-    const emailHtml = FirstScanEmail({
+    const emailHtml = await render(FirstScanEmail({
       firstName: profile.first_name || 'there',
       score,
       topSuggestions: topSuggestions || [],
-    })
+    }))
 
     const result = await sendEmail(profile.email, 'Your First Scan Results are Ready', emailHtml)
 

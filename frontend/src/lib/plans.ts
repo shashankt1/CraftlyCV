@@ -21,8 +21,8 @@ export const canUseCareerHub = (profile: { plan: string }) =>
 export const hasWatermark = (profile: { plan: string }) =>
   profile.plan === 'free'
 
-export const isPro = (profile: { plan: string }) =>
-  ['pro', 'lifetime'].includes(profile.plan)
+export const isPro = (profile: { plan: string } | null | undefined) =>
+  profile !== null && ['pro', 'lifetime'].includes(profile.plan)
 
 export type PlanId = 'free' | 'starter' | 'pro' | 'lifetime'
 
