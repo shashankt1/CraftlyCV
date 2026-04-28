@@ -38,12 +38,18 @@ export async function middleware(request: NextRequest) {
         setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           response = NextResponse.next({ request: { headers: request.headers } })
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
         },
       },
     }
   )
-  await supabase.auth.getUser()
+
+  // FIX: Use the actual Supabase user instead of manually sniffing cookies.
+  // getUser() validates the session server-side — reliable after login AND logout.
+  const { data: { user } } = await supabase.auth.getUser()
+  const isAuthenticated = !!user
 
   // STEP B — Geo-detection
   const country =
@@ -78,20 +84,20 @@ export async function middleware(request: NextRequest) {
     sameSite: 'lax',
   })
 
-  // STEP C — Auth redirect
+  // STEP C — Auth redirect (uses real session, not cookie names)
   const { pathname } = request.nextUrl
   const isProtectedRoute = PROTECTED_ROUTES.some(route => pathname.startsWith(route))
-  const supabaseAuthCookie = request.cookies.get('sb-access-token') ||
-    request.cookies.getAll().find(c => c.name.includes('auth-token'))
 
-  if (isProtectedRoute && !supabaseAuthCookie) {
+  // Not logged in → trying to access protected route → send to /auth
+  if (isProtectedRoute && !isAuthenticated) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth'
     url.searchParams.set('redirect', pathname)
     return NextResponse.redirect(url)
   }
 
-  if (pathname === '/auth' && supabaseAuthCookie) {
+  // Already logged in → trying to access /auth → send to /dashboard
+  if (pathname === '/auth' && isAuthenticated) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
