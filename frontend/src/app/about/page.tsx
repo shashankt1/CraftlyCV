@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Users, Zap, Heart, Rocket, Target, TrendingUp, CheckCircle, MessageSquare, Search, DollarSign } from 'lucide-react'
+import { FileText, ArrowLeft, Users, Zap, Heart, Rocket, Target, TrendingUp, CheckCircle, MessageSquare, Search, DollarSign } from 'lucide-react'
 import { Logo } from '@/components/shared/Logo'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 
