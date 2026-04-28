@@ -47,7 +47,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-3">
             <ThemeToggle />
             <Link
-              href="/auth"
+              href="/auth?redirect=/analyze"
               className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm font-bold flex items-center justify-center hover:bg-blue-500 transition-all hover:scale-105 hover:-translate-y-0.5 shadow-lg shadow-blue-600/25"
             >
               Get Free ATS Score

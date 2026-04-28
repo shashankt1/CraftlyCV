@@ -67,10 +67,12 @@ function AuthContent() {
 
   const handleGoogleSignIn = async () => {
     setLoading(true)
+    // Carry the redirect param so after OAuth the user lands on the right page
+    const next = searchParams.get('redirect') || '/dashboard'
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/api/auth/callback?next=/onboarding`,
+        redirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(next)}`,
       },
     })
     if (error) {

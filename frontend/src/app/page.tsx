@@ -123,7 +123,7 @@ function Nav() {
           <Link href="/auth" className="hidden sm:block text-sm text-[#9CA3AF] hover:text-[#F1F3F5] px-3 py-2 rounded-lg hover:bg-[#1C2028] transition-all">
             Sign in
           </Link>
-          <Link href="/auth"
+          <Link href="/auth?redirect=/analyze"
             className="text-sm font-medium px-4 py-2 rounded-lg bg-[#3D5A80] hover:bg-[#4A6FA5] text-white transition-colors">
             Start free →
           </Link>
@@ -473,7 +473,7 @@ export default function HomePage() {
 
               <Reveal delay={0.15}>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Link href="/auth">
+                  <Link href="/auth?redirect=/analyze">
                     <Button size="lg" className="gap-2 bg-[#3D5A80] hover:bg-[#4A6FA5] text-white border-0">
                       Analyze my resume free <ArrowRight className="h-4 w-4" />
                     </Button>
@@ -589,7 +589,7 @@ export default function HomePage() {
                 <FeatureListItem icon={Search} title="Missing keyword extraction" desc="Pulls the exact keywords from any job description and tells you which ones to add." />
               </Reveal>
               <Reveal delay={0.15}>
-                <Link href="/auth">
+                <Link href="/auth?redirect=/analyze">
                   <Button size="lg" className="gap-2 bg-[#3D5A80] hover:bg-[#4A6FA5] text-white">
                     Analyze my resume <ArrowRight className="h-4 w-4" />
                   </Button>
@@ -836,7 +836,7 @@ export default function HomePage() {
             <p className="text-[#9CA3AF] text-lg mb-10 max-w-lg mx-auto">
               3 free scans. No credit card. Know your exact ATS score in 30 seconds.
             </p>
-            <Link href="/auth">
+            <Link href="/auth?redirect=/analyze">
               <Button size="xl" className="gap-2 px-8 bg-[#3D5A80] hover:bg-[#4A6FA5] text-white">
                 Analyze my resume free <ArrowRight className="h-4 w-4" />
               </Button>
